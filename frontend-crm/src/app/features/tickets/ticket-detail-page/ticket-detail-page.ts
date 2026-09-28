@@ -1,7 +1,14 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
-import { TicketStore } from '../../../core/data-access/ticket-store';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  HostListener,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { TicketRecord, TicketStore } from '../../../core/data-access/ticket-store';
 import { LanguageService } from '../../../core/i18n/language.service';
 import { CrmAttachment, CustomerTicket, TicketComment } from '../../../core/models/customer';
 import { AttachmentPicker } from '../../../shared/attachment-picker';
@@ -33,6 +40,7 @@ export class TicketDetailPage {
   readonly store = inject(TicketStore);
   readonly i18n = inject(LanguageService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   readonly ticketId = signal(this.route.snapshot.paramMap.get('id') ?? '');
   readonly ticket = computed(() => this.store.get(this.ticketId()));
   readonly commentFilter = signal<'all' | 'internal'>('all');
@@ -44,6 +52,9 @@ export class TicketDetailPage {
   readonly fileReset = signal(0);
   readonly descriptionEditMode = signal(false);
   readonly descriptionEditDraft = signal('');
+  readonly shareMenuOpen = signal(false);
+  readonly shareCopied = signal(false);
+  readonly confirmDelete = signal(false);
 
   // Picklist options
   readonly statusOptions = [
@@ -126,16 +137,14 @@ export class TicketDetailPage {
         ? 'amber'
         : 'blue';
   }
-  priorityLabel(priority: CustomerTicket['priority']): string {
-    return this.i18n.t({ low: 'Baja', medium: 'Media', high: 'Alta', urgent: 'Urgente' }[priority]);
-  }
-  initials(name: string): string {
-    return name
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part[0])
-      .join('')
-      .toUpperCase();
+  openDuration(ticket: CustomerTicket): string {
+    const end = ticket.resolvedAt ? new Date(ticket.resolvedAt).getTime() : Date.now();
+    const minutes = Math.max(0, Math.floor((end - new Date(ticket.createdAt).getTime()) / 60_000));
+    const days = Math.floor(minutes / 1440);
+    const hours = Math.floor((minutes % 1440) / 60);
+    if (days) return `${days}d ${hours}h`;
+    if (hours) return `${hours}h ${minutes % 60}m`;
+    return `${minutes}m`;
   }
   isSlaOverdue(ticket: CustomerTicket): boolean {
     return (
@@ -208,6 +217,57 @@ export class TicketDetailPage {
       update.category = value as CustomerTicket['category'];
     }
     this.store.update(ticketId, update);
+  }
+
+  toggleShareMenu(event: MouseEvent): void {
+    event.stopPropagation();
+    this.shareCopied.set(false);
+    this.shareMenuOpen.update((open) => !open);
+  }
+  @HostListener('document:click') closeShareMenu(): void {
+    this.shareMenuOpen.set(false);
+  }
+  /** URL absoluta del ticket, para copiar o pegar en cualquier conversación. */
+  ticketLink(): string {
+    return `${window.location.origin}/tickets/${this.ticketId()}`;
+  }
+  async copyTicketLink(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(this.ticketLink());
+    } catch {
+      // Navegadores sin permiso de portapapeles: selección manual como respaldo.
+      const helper = document.createElement('textarea');
+      helper.value = this.ticketLink();
+      document.body.appendChild(helper);
+      helper.select();
+      document.execCommand('copy');
+      helper.remove();
+    }
+    this.shareCopied.set(true);
+    window.setTimeout(() => {
+      this.shareCopied.set(false);
+      this.shareMenuOpen.set(false);
+    }, 1400);
+  }
+  /** Ficha en texto plano lista para mandar al equipo por WhatsApp. */
+  shareMessage(ticket: TicketRecord): string {
+    return [
+      `*Ticket ${ticket.id}* · ${ticket.subject}`,
+      `Cliente: ${ticket.clientName}`,
+      `Categoría: ${ticket.category}`,
+      `Estado: ${this.statusLabel(ticket.status)}`,
+      `Responsable: ${ticket.assignedTo || 'Sin asignar'}`,
+      '',
+      `Ver en el CRM: ${this.ticketLink()}`,
+    ].join('\n');
+  }
+  whatsappShareUrl(ticket: TicketRecord): string {
+    return `https://wa.me/?text=${encodeURIComponent(this.shareMessage(ticket))}`;
+  }
+  deleteTicket(ticketId: string): void {
+    this.store.delete(ticketId);
+    this.confirmDelete.set(false);
+    this.router.navigate(['/tickets']);
   }
 
   deleteComment(ticketId: string, commentId: string): void {

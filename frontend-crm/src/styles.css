@@ -143,7 +143,7 @@
   color: var(--color-text-primary);
 }
 .app-frame--dark kbd,
-.app-frame--dark .button:not(.button--primary),
+.app-frame--dark .button:not(.button--primary, .button--danger),
 .app-frame--dark .page-number {
   background: var(--color-surface);
   color: var(--color-text-primary);
@@ -2198,4 +2198,8 @@ tbody tr:hover {
   border-color: #dc2626;
   background: #dc2626;
   color: #fff;
+}
+.button--danger:hover {
+  border-color: #b91c1c;
+  background: #b91c1c;
 }

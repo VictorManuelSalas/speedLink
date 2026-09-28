@@ -46,6 +46,7 @@ const ENGLISH: Readonly<Record<string, string>> = {
   Estado: 'Status',
   Responsable: 'Assignee',
   'Última actualización': 'Last updated',
+  'Tiempo abierto': 'Time open',
   'Buscar tickets…': 'Search tickets…',
   'Centro de soporte': 'Support center',
   'Gestión de tickets': 'Ticket management',
