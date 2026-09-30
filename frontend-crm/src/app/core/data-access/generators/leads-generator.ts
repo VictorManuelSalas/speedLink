@@ -40,7 +40,7 @@ export class LeadsGenerator extends BaseGenerator<LeadRecord> {
       name: fullName,
       email: FakerHelpers.randomEmail(fullName),
       phone: FakerHelpers.randomPhone(),
-      cellphone: Math.random() > 0.3 ? FakerHelpers.randomMobilePhone() : undefined,
+      cellphone: FakerHelpers.chance(0.7) ? FakerHelpers.randomMobilePhone() : undefined,
       type,
       address: FakerHelpers.randomAddress(),
       latitude: Math.round(latitude * 10000) / 10000,
@@ -94,13 +94,13 @@ export class LeadsGenerator extends BaseGenerator<LeadRecord> {
       plan: FakerHelpers.randomPlan(),
       speed: FakerHelpers.randomSpeed(),
       monthlyFee: FakerHelpers.randomMonthlyFee(),
-      billingDay: Math.floor(Math.random() * 28) + 1,
+      billingDay: FakerHelpers.randomInt(1, 28),
       currentBalance: 0,
       technician: FakerHelpers.randomFullName(),
       lastActivity: new Date().toISOString().split('T')[0],
       installDate: FakerHelpers.randomDate(60),
       gpsLocation: `${lead.latitude},${lead.longitude}`,
-      ipAddress: `10.20.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`,
+      ipAddress: `10.20.${FakerHelpers.randomInt(0, 255)}.${FakerHelpers.randomInt(0, 255)}`,
     };
   }
 }

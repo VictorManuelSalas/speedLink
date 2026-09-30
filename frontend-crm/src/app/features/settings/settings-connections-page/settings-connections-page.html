@@ -65,15 +65,21 @@
                 <br />Modificado {{ card.updatedAt | date: 'dd MMM y' }} · {{ card.updatedBy }}
               }
             </small>
-            <button class="button" type="button" (click)="configure(card.key)">
-              {{ canEdit() && card.key !== 'speedlink-api' ? 'Configurar' : 'Ver detalle' }}
-            </button>
+            @if (card.key === 'mikrotik') {
+              <a class="button" routerLink="/settings/connections/mikrotik">{{ canEdit() ? 'Configurar' : 'Ver detalle' }}</a>
+            } @else {
+              <button class="button" type="button" (click)="configure(card.key)">
+                {{ canEdit() && card.key !== 'speedlink-api' ? 'Configurar' : 'Ver detalle' }}
+              </button>
+            }
           </footer>
         </article>
       }
     </div>
   </section>
 }
+
+<app-custom-connections-section />
 
 @if (openCard(); as card) {
   <button class="settings-modal-backdrop" type="button" aria-label="Cerrar" (click)="close()"></button>

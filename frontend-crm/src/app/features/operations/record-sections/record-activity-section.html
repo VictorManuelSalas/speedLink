@@ -2,14 +2,29 @@
     <header class="section-head">
       <div>
         <h2>Historial de actividad</h2>
-        <p>{{ filtered().length }} de {{ events().length }} eventos</p>
+        <p>
+          {{ filtered().length }} de {{ events().length }} eventos
+          @if (related().length) {
+            · incluye {{ related().length }} registro(s) relacionado(s)
+          }
+        </p>
       </div>
       <div class="filters">
-        <button type="button" [class.active]="!module() && !type() && !date()" (click)="clear()">
+        <button type="button" [class.active]="!module() && !type() && !date() && origin() === 'all' && !whatsappOnly()" (click)="clear()">
           Todos</button
-        ><select #moduleSelect [value]="module()" (change)="module.set(moduleSelect.value)">
+        >@if (whatsappCount()) {
+          <button type="button" class="wa-filter" [class.active]="whatsappOnly()" (click)="whatsappOnly.set(!whatsappOnly())">
+            WhatsApp · {{ whatsappCount() }}
+          </button>
+        }@if (related().length) {
+          <select #originSelect [value]="origin()" (change)="setOrigin(originSelect.value)">
+            <option value="all">Este y relacionados</option>
+            <option value="own">Sólo este registro</option>
+            <option value="related">Sólo relacionados</option>
+          </select>
+        }<select #moduleSelect [value]="module()" (change)="module.set(moduleSelect.value)">
           <option value="">Módulo</option>
-          @for (item of modules; track item) {
+          @for (item of modules(); track item) {
             <option [value]="item">{{ item }}</option>
           }</select
         ><select #typeSelect [value]="type()" (change)="setType(typeSelect.value)">
@@ -34,9 +49,9 @@
       </div>
     </header>
     <div class="timeline">
-      @for (event of filtered(); track event.id) {
+      @for (event of filtered(); track event.id + (event.source?.id ?? '')) {
         <article>
-          <span class="marker {{ event.tone }}">{{ icon(event.tone) }}</span>
+          <span class="marker {{ event.channel === 'whatsapp' ? 'whatsapp' : event.tone }}">{{ icon(event) }}</span>
           <div class="event">
             <header>
               <div>
@@ -48,10 +63,22 @@
               <time>{{ event.createdAt | date: 'dd MMM y, HH:mm' }}</time>
             </header>
             <div class="badges">
+              @if (event.source; as source) {
+                <a class="source" [routerLink]="source.route">{{ source.label }}</a>
+              }
               <span>{{ event.module }}</span
               ><span>{{ typeLabel(event.actionType) }}</span>
+              @if (event.phone) {
+                <span>{{ event.phone }}</span>
+              }
             </div>
             <p>{{ event.detail }}</p>
+            @if (event.message) {
+              <details class="wa-message">
+                <summary>Ver mensaje enviado</summary>
+                <p>{{ event.message }}</p>
+              </details>
+            }
           </div>
         </article>
       } @empty {

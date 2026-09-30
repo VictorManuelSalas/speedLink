@@ -1,4 +1,5 @@
-import { Injectable, computed, effect, signal } from '@angular/core';
+import { AuditLog } from '../audit/audit-log';
+import { Injectable, inject, computed, effect, signal } from '@angular/core';
 import { setLiveSystemUsers } from '../data-access/system-users';
 import {
   ADMIN_ROLE_ID,
@@ -47,6 +48,7 @@ const fail = <T = never>(error: string): AccessResult<T> => ({ ok: false, error 
  */
 @Injectable({ providedIn: 'root' })
 export class AccessStore {
+  private readonly audit = inject(AuditLog);
   readonly roles = signal<ReadonlyArray<Role>>(this.readRoles());
   readonly users = signal<ReadonlyArray<CrmUser>>(this.read(USERS_KEY, SEED_USERS));
 
@@ -114,6 +116,7 @@ export class AccessStore {
       temporaryPassword: true,
     };
     this.users.update((users) => [user, ...users]);
+    this.audit.record('Usuarios', 'Usuario invitado', user.fullName, `${user.email} · rol ${this.role(user.roleId)?.name ?? user.roleId}`);
     return ok({ user, password });
   }
 
@@ -129,6 +132,9 @@ export class AccessStore {
     }
     const updated: CrmUser = { ...current, ...clean(input) };
     this.replaceUser(updated);
+    if (input.roleId !== current.roleId)
+      this.audit.record('Usuarios', 'Rol cambiado', updated.fullName, `${this.role(current.roleId)?.name ?? current.roleId} → ${this.role(input.roleId)?.name ?? input.roleId}`, 'warning');
+    else this.audit.record('Usuarios', 'Usuario editado', updated.fullName, updated.email);
     return ok(updated);
   }
 
@@ -139,6 +145,7 @@ export class AccessStore {
     if (this.isLastActiveAdmin(user))
       return fail('Es el único administrador activo: no se puede suspender.');
     this.replaceUser({ ...user, status: 'suspended', suspendedAt: new Date().toISOString() });
+    this.audit.record('Usuarios', 'Usuario suspendido', user.fullName, user.email, 'warning');
     return ok(undefined);
   }
 
@@ -148,6 +155,7 @@ export class AccessStore {
     if (!user) return fail('El usuario ya no existe.');
     const status: UserStatus = user.lastLoginAt ? 'active' : 'invited';
     this.replaceUser({ ...user, status, suspendedAt: undefined });
+    this.audit.record('Usuarios', 'Usuario reactivado', user.fullName, user.email);
     return ok(undefined);
   }
 
@@ -158,6 +166,7 @@ export class AccessStore {
     if (this.isLastActiveAdmin(user))
       return fail('Es el único administrador activo: no se puede eliminar.');
     this.users.update((users) => users.filter((item) => item.id !== id));
+    this.audit.record('Usuarios', 'Usuario eliminado', user.fullName, user.email, 'critical');
     return ok(undefined);
   }
 
@@ -177,6 +186,7 @@ export class AccessStore {
       invitedAt: user.status === 'invited' ? new Date().toISOString() : user.invitedAt,
     };
     this.replaceUser(updated);
+    this.audit.record('Usuarios', 'Contraseña restablecida', user.fullName, 'Se generó una contraseña temporal', 'warning');
     return ok({ user: updated, password });
   }
 
@@ -188,6 +198,7 @@ export class AccessStore {
     const weak = passwordProblem(next);
     if (weak) return fail(weak);
     this.replaceUser({ ...user, ...(await hashPassword(next)), temporaryPassword: false });
+    this.audit.record('Usuarios', 'Contraseña cambiada', user.fullName, 'Cambiada por el propio usuario');
     return ok(undefined);
   }
 
@@ -237,6 +248,7 @@ export class AccessStore {
       updatedAt: now,
     };
     this.roles.update((roles) => [...roles, role]);
+    this.audit.record('Roles', 'Rol creado', role.name, source ? `Copia de ${source.name}` : 'Sin permisos');
     return ok(role);
   }
 
@@ -264,6 +276,12 @@ export class AccessStore {
       updatedAt: new Date().toISOString(),
     };
     this.roles.update((roles) => roles.map((item) => (item.id === id ? updated : item)));
+    const before = new Set(role.permissions);
+    const added = normalized.filter((permission) => !before.has(permission));
+    const removed = role.permissions.filter((permission) => !normalized.includes(permission));
+    if (added.length || removed.length)
+      this.audit.record('Roles', 'Permisos modificados', updated.name, [added.length ? `+ ${added.join(', ')}` : '', removed.length ? `− ${removed.join(', ')}` : ''].filter(Boolean).join(' · '), 'warning');
+    else this.audit.record('Roles', 'Rol editado', updated.name, updated.description);
     return ok(updated);
   }
 
@@ -281,6 +299,7 @@ export class AccessStore {
       );
     }
     this.roles.update((roles) => roles.filter((item) => item.id !== id));
+    this.audit.record('Roles', 'Rol eliminado', role.name, assigned ? `${assigned} usuario(s) pasaron a ${this.role(reassignTo ?? '')?.name ?? reassignTo}` : '', 'critical');
     return ok(undefined);
   }
 

@@ -50,9 +50,9 @@ export class ContractsGenerator extends BaseGenerator<ContractRecord> {
     ];
 
     // 50% chance to add an add-on service
-    if (Math.random() > 0.5) {
+    if (FakerHelpers.chance(0.5)) {
       const addOn = this.addOns.length
-        ? this.addOns[Math.floor(Math.random() * this.addOns.length)]
+        ? FakerHelpers.randomElement(this.addOns)
         : null;
       items.push({
         serviceId: addOn?.id ?? IdGenerator.generate('SRV', 5100),
@@ -123,7 +123,7 @@ export class ContractsGenerator extends BaseGenerator<ContractRecord> {
     return this.createBaseRecord<ContractRecord>(
       IdGenerator.generate('CTR', 3000),
       {
-        contractNumber: `CTR-${new Date().getFullYear()}-${String(Math.random() * 9000 + 1000).split('.')[0]}`,
+        contractNumber: `CTR-${new Date().getFullYear()}-${FakerHelpers.randomInt(1000, 9999)}`,
         clientId: customerId,
         client: LookupMapper.getCustomerName(customerId),
         startDate: startDate,

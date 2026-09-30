@@ -6,7 +6,7 @@ import { runtimeConfig } from '../runtime-config';
  * usar de verdad; cada una dice en qué pantallas se nota.
  */
 
-export type ConnectionKey = 'google-maps' | 'speedlink-api' | 'whatsapp' | 'payments' | 'cfdi';
+export type ConnectionKey = 'google-maps' | 'speedlink-api' | 'whatsapp' | 'payments' | 'cfdi' | 'mikrotik';
 
 /**
  * - `active`: funcionando.

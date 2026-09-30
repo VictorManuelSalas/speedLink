@@ -8,9 +8,13 @@ import { lookupDisplayLabel, lookupPicklistOptions } from '../operations/lookup-
 import { ModuleField } from '../operations/operational-modules.data';
 import { OperationalStore } from '../operations/operational-store';
 
+import { WhatsappMenu } from '../../shared/whatsapp-menu';
+import { WhatsappSender } from '../../core/whatsapp/whatsapp-sender';
+import { MessageContext } from '../../core/whatsapp/message-context';
+
 @Component({
   selector: 'app-calendar-page',
-  imports: [DatePipe, RouterLink, InlineEditableDateField, StyledPicklist],
+  imports: [DatePipe, RouterLink, InlineEditableDateField, StyledPicklist, WhatsappMenu],
   templateUrl: './calendar-page.html',
   styleUrl: './calendar-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -97,6 +101,26 @@ export class CalendarPage {
   readonly events = this.calendarStore.events;
   readonly activeFilter = signal<string>('ALL');
   readonly selectedEvent = signal<CalendarEvent | null>(null);
+  private readonly whatsapp = inject(WhatsappSender);
+  private readonly messageContext = inject(MessageContext);
+
+  /** ¿El responsable de la cita tiene teléfono para mandarle la ubicación? */
+  canSendToTechnician(event: CalendarEvent): boolean {
+    return this.whatsapp.hasPhone(this.messageContext.assigneePhone(event.assignedTo));
+  }
+  /** Dirección, ubicación y teléfono del cliente, al WhatsApp del técnico. */
+  sendLocationToTechnician(event: CalendarEvent): void {
+    const context = this.messageContext.build('calendar', event as unknown as Record<string, unknown>);
+    this.whatsapp.open({
+      templateId: 'tpl-event-tech-location',
+      module: 'calendar',
+      record: context.data,
+      phone: this.messageContext.assigneePhone(event.assignedTo),
+      recordId: event.id,
+      customerId: context.customerId,
+      fallback: `${event.title}`,
+    });
+  }
   readonly createOpen = signal(false);
   readonly editingEventId = signal<string | null>(null);
   readonly draft = signal<Record<string, string>>({ type: 'INSTALLATION', assignedTo: 'USR-001' });

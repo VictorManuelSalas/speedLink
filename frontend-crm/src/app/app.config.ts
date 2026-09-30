@@ -15,6 +15,7 @@ import { DataInitializerService } from './core/data-access/services/data-initial
 import { OrganizationStore } from './core/organization/organization-store';
 import { ModulesStore } from './core/modules/modules-store';
 import { ConnectionsStore } from './core/connections/connections-store';
+import { IntegrationsStore } from './core/integrations/integrations.store';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -32,5 +33,7 @@ export const appConfig: ApplicationConfig = {
     provideAppInitializer(() => void inject(ModulesStore)),
     // La llave de mapas y la lada de WhatsApp se leen desde muchas pantallas.
     provideAppInitializer(() => void inject(ConnectionsStore)),
+    // Escucha los eventos del CRM desde el arranque para preparar las entregas de webhooks.
+    provideAppInitializer(() => void inject(IntegrationsStore)),
   ],
 };

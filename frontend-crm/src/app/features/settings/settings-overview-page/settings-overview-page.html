@@ -12,13 +12,23 @@
 
 <section class="settings-health">
   <div class="settings-health__score">
-    <strong>92%</strong><span>Configuración completada</span>
+    <strong>{{ score() }}%</strong><span>Configuración completada</span>
   </div>
-  <div class="settings-health__progress"><i></i></div>
+  <div class="settings-health__progress" role="progressbar" [attr.aria-valuenow]="score()" aria-valuemin="0" aria-valuemax="100">
+    <i [style.width.%]="score()"></i>
+  </div>
   <div class="settings-health__items">
-    <span><i class="dot dot--ok"></i>Correo y SMS conectados</span>
-    <span><i class="dot dot--ok"></i>Políticas de acceso activas</span>
-    <span><i class="dot dot--warn"></i>1 integración requiere atención</span>
+    @for (item of pending().slice(0, 3); track item.label) {
+      <a [routerLink]="item.route"><i class="dot dot--warn"></i>{{ item.label }}</a>
+    } @empty {
+      <span><i class="dot dot--ok"></i>Todo configurado</span>
+    }
+    @if (pending().length > 3) {
+      <span>+{{ pending().length - 3 }} pendiente(s)</span>
+    }
+    @if (attention()) {
+      <a routerLink="/settings/connections"><i class="dot dot--warn"></i>{{ attention() }} integración(es) con datos faltantes</a>
+    }
   </div>
 </section>
 

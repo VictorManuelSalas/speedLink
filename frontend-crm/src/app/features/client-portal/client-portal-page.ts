@@ -15,11 +15,15 @@ import {
   ClientPortalStore,
   PortalAttachment,
   PortalTicket,
+  PORTAL_FAULT_TYPES,
+  PortalInvoice,
 } from '../../core/portal/client-portal.store';
 import { CrmAttachment } from '../../core/models/customer';
 import { DeviceAccessStore } from '../../core/equipment/device-access.store';
 import { WIFI_BANDS } from '../../core/equipment/device-access.model';
 import { OperationalStore } from '../operations/operational-store';
+import { MikrotikStore } from '../../core/network/mikrotik.store';
+import { formatGb, monthUsage, speedLabel, trafficNow } from '../../core/network/mikrotik.model';
 import { FilePreviewModal } from '../../shared/file-preview-modal';
 import { FileViewer, NO_PREVIEW_MIME, downloadAttachment } from '../../shared/file-viewer.service';
 
@@ -52,6 +56,12 @@ export class ClientPortalPage {
   ticketSubject = '';
   ticketDescription = '';
   ticketPriority: PortalTicket['priority'] = 'Media';
+  ticketFault = 'sin-internet';
+  readonly faultTypes = PORTAL_FAULT_TYPES;
+  /** Respuesta del cliente en el detalle del ticket. */
+  readonly replyDraft = signal('');
+  /** Factura que se está pagando en línea. */
+  readonly paying = signal<PortalInvoice | null>(null);
   profileName = '';
   profileEmail = '';
   profilePhone = '';
@@ -59,6 +69,28 @@ export class ClientPortalPage {
   profileCommunity = '';
   private readonly router = inject(Router);
   private readonly deviceAccess = inject(DeviceAccessStore);
+  private readonly mikrotik = inject(MikrotikStore);
+  /**
+   * Estado real del servicio si el cliente tiene cola en MikroTik: velocidad,
+   * consumo del mes y si está suspendido. Sin MikroTik se muestra lo de la ficha.
+   */
+  readonly netService = computed(() => {
+    if (!this.mikrotik.connected()) return null;
+    const sub = this.mikrotik.subscriber(this.store.profile().id);
+    if (!sub) return null;
+    const speed = this.mikrotik.appliedSpeed(sub);
+    const traffic = trafficNow(sub.customerId, speed, sub.blocked);
+    const usage = monthUsage(sub.customerId, speed, { blockedAt: sub.blockedAt, since: sub.countersResetAt });
+    return {
+      speed: speedLabel(speed),
+      plan: this.mikrotik.planFor(sub.customerId).label,
+      status: traffic.status,
+      blocked: sub.blocked,
+      forPayment: sub.blockReason === 'Falta de pago',
+      month: formatGb(usage.download + usage.upload),
+      ip: sub.ip,
+    };
+  });
   private readonly operations = inject(OperationalStore);
   /**
    * Redes activas del equipo asignado al cliente. Sólo nombre y banda: la
@@ -150,6 +182,7 @@ export class ClientPortalPage {
     this.ticketSubject = '';
     this.ticketDescription = '';
     this.ticketPriority = 'Media';
+    this.ticketFault = 'sin-internet';
     this.ticketComposerOpen.set(true);
   }
   createTicket(): void {
@@ -159,10 +192,30 @@ export class ClientPortalPage {
       this.ticketSubject.trim(),
       this.ticketDescription.trim(),
       this.ticketPriority,
+      this.ticketFault,
     );
     this.ticketComposerOpen.set(false);
     this.activeTab.set('Tickets');
     this.showToast('Ticket creado correctamente');
+  }
+  /** Ticket abierto en el detalle, siempre con los datos vivos del CRM. */
+  readonly liveTicket = computed(() => {
+    const selected = this.selectedTicket();
+    return selected ? (this.store.tickets().find((ticket) => ticket.id === selected.id) ?? selected) : null;
+  });
+  sendReply(ticketId: string): void {
+    const message = this.replyDraft().trim();
+    if (!message) return;
+    this.store.replyToTicket(ticketId, message);
+    this.replyDraft.set('');
+    this.showToast('Respuesta enviada');
+  }
+  confirmPayment(): void {
+    const invoice = this.paying();
+    if (!invoice) return;
+    const result = this.store.payInvoice(invoice.id);
+    this.paying.set(null);
+    this.showToast(result.ok ? `Pago aprobado · referencia ${result.reference}` : result.error);
   }
   uploadFiles(event: Event): void {
     if (!this.store.config().showAttachments) return;

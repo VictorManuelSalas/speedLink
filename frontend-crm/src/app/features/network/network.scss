@@ -1,0 +1,314 @@
+/* Piezas compartidas de las pantallas de red (MikroTik). */
+
+.net-pill {
+  padding: 4px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+
+  &::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+}
+.net-pill--online {
+  background: #ecfdf5;
+  color: #15803d;
+}
+.net-pill--blocked {
+  background: #fef2f2;
+  color: #dc2626;
+}
+.net-pill--offline {
+  background: var(--color-muted);
+  color: var(--color-text-secondary);
+}
+.net-pill--sync {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.net-dot {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border-radius: 50%;
+  background: #94a3b8;
+  box-shadow: 0 0 0 6px rgb(148 163 184 / 18%);
+}
+.net-dot--online {
+  background: #22c55e;
+  box-shadow: 0 0 0 6px rgb(34 197 94 / 18%);
+}
+.net-dot--blocked {
+  background: #ef4444;
+  box-shadow: 0 0 0 6px rgb(239 68 68 / 18%);
+}
+
+.net-banner {
+  margin: 0;
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  border: 1px solid;
+  border-radius: 11px;
+  font-size: 12.5px;
+  line-height: 1.5;
+
+  button {
+    margin-left: auto;
+    padding: 6px 11px;
+    border: 0;
+    border-radius: 8px;
+    background: rgb(255 255 255 / 70%);
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+}
+.net-banner--danger {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+.net-banner--info {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+.net-banner--warn {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.net-note {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.net-note--warn {
+  color: #b45309;
+}
+.net-error {
+  margin: 10px 0 0;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Formularios y diálogos */
+.net-form,
+.net-dialog {
+  label {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: var(--color-text-secondary);
+    font-size: 11.5px;
+    font-weight: 650;
+  }
+  input:not([type='checkbox']),
+  select {
+    width: 100%;
+    height: 40px;
+    padding: 0 11px;
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 13px;
+    outline: 0;
+  }
+  input:focus,
+  select:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgb(37 99 235 / 12%);
+  }
+}
+.net-dialog {
+  width: min(470px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+
+  > div > label,
+  > div > .net-pair,
+  > div > .net-note {
+    margin-top: 12px;
+  }
+}
+.net-check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  color: var(--color-text-primary) !important;
+  font-size: 12.5px !important;
+  cursor: pointer;
+}
+.net-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.net-toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1100;
+  max-width: min(440px, calc(100vw - 48px));
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 12px 35px rgb(15 23 42 / 30%);
+}
+
+/* Bitácora */
+.net-log {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  > li {
+    padding: 12px 0;
+    border-top: 1px solid var(--color-border);
+  }
+  > li:first-child {
+    border-top: 0;
+  }
+  small {
+    display: block;
+    margin-top: 3px;
+    color: var(--color-text-secondary);
+    font-size: 11.5px;
+  }
+}
+.net-log__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+
+  a {
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+}
+.net-log__status {
+  margin-left: auto;
+  padding: 3px 8px;
+  border-radius: 99px;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.net-log__status--simulated {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.net-log__status--manual {
+  background: #fffbeb;
+  color: #b45309;
+}
+.net-log__cmd {
+  margin-top: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+
+  code {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-size: 11px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  button {
+    padding: 6px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+}
+.net-log__empty {
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+}
+.net-preview {
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+:host-context(.app-frame--dark) {
+  .net-banner--danger {
+    border-color: #7f1d1d;
+    background: #2a1215;
+    color: #fecaca;
+  }
+  .net-banner--warn {
+    border-color: #78350f;
+    background: #1c1917;
+    color: #fcd34d;
+  }
+  .net-banner--info {
+    border-color: #1e3a8a;
+    background: #0f1b33;
+    color: #bfdbfe;
+  }
+  .net-banner button {
+    background: rgb(255 255 255 / 10%);
+  }
+  .net-pill--online {
+    background: #052e16;
+    color: #86efac;
+  }
+  .net-pill--blocked {
+    background: #2a1215;
+    color: #fca5a5;
+  }
+  .net-pill--sync {
+    background: #1c1917;
+    color: #fcd34d;
+  }
+  .net-log__status--simulated {
+    background: #172554;
+    color: #bfdbfe;
+  }
+  .net-log__status--manual {
+    background: #1c1917;
+    color: #fcd34d;
+  }
+}

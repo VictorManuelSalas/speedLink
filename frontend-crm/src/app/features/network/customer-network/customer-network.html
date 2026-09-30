@@ -1,0 +1,433 @@
+@if (store.connected() && canRead()) {
+  @if (compact()) {
+    <!-- Tarjeta resumida (tickets) -->
+    <section class="card net-compact">
+      <header>
+        <h3>Red · MikroTik</h3>
+        @if (sub()) {
+          <span class="net-pill net-pill--{{ traffic().status }}">{{
+            traffic().status === 'online' ? 'En línea' : traffic().status === 'blocked' ? 'Bloqueado' : 'Desconectado'
+          }}</span>
+        }
+      </header>
+      @if (sub(); as s) {
+        <dl>
+          <div><dt>IP</dt><dd>{{ s.ip }}</dd></div>
+          <div><dt>Velocidad</dt><dd>{{ speedText(applied()) }}</dd></div>
+          @if (traffic().status === 'online') {
+            <div><dt>Ahora</dt><dd>↓ {{ bandLabel(traffic().rx) }} · ↑ {{ bandLabel(traffic().tx) }}</dd></div>
+            <div><dt>Latencia</dt><dd>{{ traffic().latencyMs }} ms</dd></div>
+          }
+          @if (s.blocked) {
+            <div><dt>Bloqueado</dt><dd>{{ s.blockReason }} · {{ s.blockedAt | date: 'dd MMM' }}</dd></div>
+          }
+        </dl>
+        @if (outOfSync()) {
+          <p class="net-note net-note--warn">La cola no tiene la velocidad del plan.</p>
+        }
+      } @else {
+        <p class="net-note">Sin cola en MikroTik.</p>
+      }
+      <a class="net-link" [routerLink]="['/customers', customerId()]" [queryParams]="{ tab: 'Red' }">Ver red del cliente ›</a>
+    </section>
+  } @else {
+    @if (sub(); as s) {
+      <!-- Estado y acciones -->
+      <section class="card net-status">
+        <div class="net-status__main">
+          <span class="net-dot net-dot--{{ traffic().status }}"></span>
+          <div>
+            <h2>
+              @switch (traffic().status) {
+                @case ('online') { Internet activo }
+                @case ('blocked') { Internet bloqueado }
+                @default { Equipo desconectado }
+              }
+            </h2>
+            <p>
+              {{ s.ip }} · {{ router()?.name }} · cola «{{ s.queueName }}»
+              @if (traffic().status !== 'offline') {
+                · {{ traffic().latencyMs }} ms · conectado hace {{ traffic().uptimeDays }} d
+              }
+            </p>
+          </div>
+        </div>
+        <div class="net-status__actions">
+          @if (canBlock()) {
+            @if (s.blocked) {
+              <button class="button button--primary" type="button" (click)="open('unblock')">Desbloquear internet</button>
+            } @else {
+              <button class="button button--danger" type="button" (click)="open('block')">Bloquear internet</button>
+            }
+          }
+          @if (canUpdate()) {
+            <button class="button" type="button" (click)="open('speed')">Cambiar velocidad</button>
+            <div class="net-more">
+              <button class="button" type="button" aria-label="Más acciones" (click)="moreOpen.set(!moreOpen())">•••</button>
+              @if (moreOpen()) {
+                <div class="net-more__panel" role="menu">
+                  <button type="button" role="menuitem" (click)="open('ip')">Cambiar IP</button>
+                  <button type="button" role="menuitem" (click)="open('reset')">Reiniciar contadores</button>
+                  <button type="button" role="menuitem" class="is-danger" (click)="open('remove')">Eliminar cola</button>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </section>
+
+      @if (s.blocked) {
+        <p class="net-banner net-banner--danger">
+          <b>Bloqueado desde {{ s.blockedAt | date: 'dd MMM y, HH:mm' }}</b> · {{ s.blockReason }}
+          @if (s.blockNote) {
+            · {{ s.blockNote }}
+          }
+          @if (s.blockReason === 'Falta de pago' && overdue().count === 0) {
+            <span> · Ya no tiene facturas vencidas: puedes reactivarlo.</span>
+          }
+        </p>
+      } @else if (pastGrace()) {
+        <p class="net-banner net-banner--warn">
+          <b>Debe {{ overdue().amount | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }}</b> en
+          {{ overdue().count }} factura(s), vencida hace {{ overdue().days }} días (gracia:
+          {{ store.rules().graceDays }}).
+          @if (canBlock()) {
+            <button type="button" (click)="open('block')">Bloquear por falta de pago</button>
+          }
+        </p>
+      }
+      @if (outOfSync()) {
+        <p class="net-banner net-banner--warn">
+          <b>La cola tiene {{ speedText(applied()) }}</b> pero el plan
+          {{ plan().source === 'contract' ? 'del contrato' : 'del cliente' }} es {{ speedText(plan().speed) }}.
+          @if (canUpdate()) {
+            <button type="button" (click)="applyPlan()">Aplicar velocidad del plan</button>
+          }
+        </p>
+      }
+
+      <!-- Métricas -->
+      <section class="net-kpis">
+        <article class="card">
+          <span>Ahora</span>
+          <b>↓ {{ bandLabel(traffic().rx) }}</b>
+          <small>↑ {{ bandLabel(traffic().tx) }} · se actualiza cada 5 s</small>
+        </article>
+        <article class="card">
+          <span>Uso del plan</span>
+          <b>{{ (traffic().utilization * 100).toFixed(0) }} %</b>
+          <div class="net-meter"><i [style.width.%]="traffic().utilization * 100"></i></div>
+        </article>
+        <article class="card">
+          <span>Consumo del mes</span>
+          <b>{{ gb(month().download + month().upload) }}</b>
+          <small>↓ {{ gb(month().download) }} · ↑ {{ gb(month().upload) }}</small>
+        </article>
+        <article class="card">
+          <span>Promedio diario</span>
+          <b>{{ gb(dailyAverage()) }}</b>
+          <small>Hora pico hoy: {{ peakHour().label }}</small>
+        </article>
+      </section>
+
+      <section class="net-grid">
+        <article class="card net-chart">
+          <header>
+            <h3>Últimas 24 horas</h3>
+            <small>Bajada promedio por hora · máx. {{ bandLabel(hoursPath().max) }}</small>
+          </header>
+          <svg viewBox="0 0 240 60" preserveAspectRatio="none" role="img" aria-label="Tráfico de las últimas 24 horas">
+            <path class="net-chart__area" [attr.d]="hoursPath().area" />
+            <path class="net-chart__line" [attr.d]="hoursPath().line" />
+          </svg>
+          <div class="net-chart__axis">
+            <span>{{ hours()[0].label }}</span><span>{{ hours()[12].label }}</span><span>Ahora</span>
+          </div>
+        </article>
+        <article class="card net-chart">
+          <header>
+            <h3>Consumo de 30 días</h3>
+            <small>GB por día</small>
+          </header>
+          <svg viewBox="0 0 240 60" preserveAspectRatio="none" role="img" aria-label="Consumo diario de 30 días">
+            @for (bar of dayBars(); track bar.date) {
+              <rect [attr.x]="bar.x + 1" [attr.y]="60 - bar.h" width="6" [attr.height]="bar.h" rx="1">
+                <title>{{ bar.date }}: {{ gb(bar.gb) }}</title>
+              </rect>
+            }
+          </svg>
+          <div class="net-chart__axis">
+            <span>{{ days()[0].date | date: 'dd MMM' }}</span><span>Hoy</span>
+          </div>
+        </article>
+        <article class="card net-speed">
+          <h3>Velocidad</h3>
+          <dl>
+            <div><dt>En el router</dt><dd>{{ speedText(applied()) }}{{ s.burst ? ' · con ráfaga' : '' }}</dd></div>
+            <div>
+              <dt>Plan</dt>
+              <dd>
+                {{ speedText(plan().speed) }} ·
+                @if (plan().contractId) {
+                  <a [routerLink]="['/contracts', plan().contractId]">{{ plan().label }}</a>
+                } @else {
+                  {{ plan().label }}
+                }
+              </dd>
+            </div>
+            <div><dt>Cola creada</dt><dd>{{ s.createdAt | date: 'dd MMM y' }}</dd></div>
+            @if (s.countersResetAt) {
+              <div><dt>Contadores</dt><dd>Reiniciados {{ s.countersResetAt | date: 'dd MMM y' }}</dd></div>
+            }
+          </dl>
+        </article>
+      </section>
+
+      <section class="card net-history">
+        <header>
+          <h3>Bitácora de red</h3>
+          <a routerLink="/network">Ver toda la red ›</a>
+        </header>
+        <app-network-log [entries]="customerLog()" />
+      </section>
+    } @else {
+      <!-- Sin cola: alta en MikroTik -->
+      <section class="card net-empty">
+        <div>
+          <h2>Este cliente no tiene cola en MikroTik</h2>
+          <p>
+            Crea su cola simple para darle internet con la velocidad de su plan. Es lo mismo que hoy
+            haces a mano en Winbox › Queues.
+          </p>
+        </div>
+        @if (canUpdate()) {
+          <form class="net-form" (submit)="$event.preventDefault(); provision()">
+            <label
+              ><span>Router</span
+              ><select name="router" [ngModel]="provRouter()" (ngModelChange)="provRouter.set($event)">
+                @for (item of store.activeRouters(); track item.id) {
+                  <option [value]="item.id">{{ item.name }}{{ item.simulated ? ' (demo)' : '' }}</option>
+                }
+              </select></label
+            >
+            <label
+              ><span>IP del cliente (target)</span
+              ><input name="ip" inputmode="decimal" [ngModel]="provIp()" (ngModelChange)="provIp.set($event)"
+            /></label>
+            <label class="net-wide"
+              ><span>Nombre de la cola</span
+              ><input name="queue" [ngModel]="provQueue()" (ngModelChange)="provQueue.set($event)"
+            /></label>
+            <label
+              ><span>Velocidad</span
+              ><select name="profile" [ngModel]="provProfile()" (ngModelChange)="provProfile.set($event)">
+                @if (plan().speed) {
+                  <option value="plan">Del plan: {{ speedText(plan().speed) }}</option>
+                }
+                @for (item of store.profiles(); track item.id) {
+                  <option [value]="item.id">{{ item.name }} · {{ speedText(item) }}</option>
+                }
+                <option value="custom">Personalizada…</option>
+              </select></label
+            >
+            @if (provProfile() === 'custom') {
+              <div class="net-pair">
+                <label
+                  ><span>Bajada (Mbps)</span
+                  ><input type="number" min="0.1" step="0.5" name="down" [ngModel]="provDown()" (ngModelChange)="provDown.set($event)"
+                /></label>
+                <label
+                  ><span>Subida (Mbps)</span
+                  ><input type="number" min="0.1" step="0.5" name="up" [ngModel]="provUp()" (ngModelChange)="provUp.set($event)"
+                /></label>
+              </div>
+            } @else {
+              <label class="net-check"
+                ><input type="checkbox" name="burst" [ngModel]="provBurst()" (ngModelChange)="provBurst.set($event)" />Ráfaga
+                (1.5× durante 8 s)</label
+              >
+            }
+            @if (provCommand()) {
+              <code class="net-wide net-preview">{{ provCommand() }}</code>
+            }
+            @if (error()) {
+              <p class="net-error net-wide" role="alert">{{ error() }}</p>
+            }
+            <footer class="net-wide">
+              <button class="button button--primary" type="submit">Crear usuario en MikroTik</button>
+            </footer>
+          </form>
+        } @else {
+          <p class="net-note">Tu rol no puede crear colas.</p>
+        }
+      </section>
+    }
+  }
+}
+
+<!-- Diálogos -->
+@if (dialog(); as d) {
+  <button class="confirm-backdrop" type="button" aria-label="Cerrar" (click)="close()"></button>
+  <section class="confirm-dialog net-dialog" role="dialog" aria-modal="true">
+    @switch (d) {
+      @case ('block') {
+        <span class="confirm-dialog__icon">⊘</span>
+        <div>
+          <span class="confirm-dialog__eyebrow">MIKROTIK</span>
+          <h2>¿Bloquear el internet de {{ customerName() || customerId() }}?</h2>
+          <p>Su IP entra a la lista «{{ router()?.blockList }}» y se queda sin navegación hasta desbloquearlo.</p>
+          <label
+            ><span>Motivo</span
+            ><select [ngModel]="blockReason()" (ngModelChange)="blockReason.set($event)">
+              @for (reason of reasons; track reason) {
+                <option [value]="reason">{{ reason }}</option>
+              }
+            </select></label
+          >
+          <label
+            ><span>Nota (opcional)</span
+            ><input [ngModel]="blockNote()" (ngModelChange)="blockNote.set($event)" maxlength="120"
+          /></label>
+          @if (canNotify() && blockReason() === 'Falta de pago' && overdue().count > 0) {
+            <label class="net-check"
+              ><input type="checkbox" [ngModel]="notifyCustomer()" (ngModelChange)="notifyCustomer.set($event)" />Avisar al
+              cliente por WhatsApp (con su estado de cuenta)</label
+            >
+          }
+          @if (!store.inCutoffWindow() && blockReason() === 'Falta de pago') {
+            <p class="net-note net-note--warn">
+              Estás fuera del horario de cortes ({{ store.rules().windowStart }}–{{ store.rules().windowEnd }}{{
+                store.rules().skipWeekends ? ', entre semana' : ''
+              }}).
+            </p>
+          }
+        </div>
+      }
+      @case ('unblock') {
+        <span class="confirm-dialog__icon confirm-dialog__icon--ok">✓</span>
+        <div>
+          <span class="confirm-dialog__eyebrow">MIKROTIK</span>
+          <h2>¿Reactivar el internet?</h2>
+          <p>
+            Estaba bloqueado por «{{ sub()?.blockReason }}».
+            @if (overdue().count) {
+              <b>Todavía debe {{ overdue().amount | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }}.</b>
+            }
+          </p>
+          @if (canNotify()) {
+            <label class="net-check"
+              ><input type="checkbox" [ngModel]="notifyCustomer()" (ngModelChange)="notifyCustomer.set($event)" />Avisar al
+              cliente por WhatsApp que ya tiene servicio</label
+            >
+          }
+        </div>
+      }
+      @case ('speed') {
+        <span class="confirm-dialog__icon confirm-dialog__icon--ok">⇅</span>
+        <div>
+          <span class="confirm-dialog__eyebrow">MIKROTIK</span>
+          <h2>Cambiar velocidad</h2>
+          <p>Ahora: {{ speedText(applied()) }} · Plan: {{ speedText(plan().speed) }}</p>
+          <label
+            ><span>Nueva velocidad</span
+            ><select [ngModel]="speedChoice()" (ngModelChange)="speedChoice.set($event)">
+              @if (plan().speed) {
+                <option value="plan">Igual al plan: {{ speedText(plan().speed) }}</option>
+              }
+              @for (item of store.profiles(); track item.id) {
+                <option [value]="item.id">{{ item.name }} · {{ speedText(item) }}</option>
+              }
+              <option value="custom">Personalizada…</option>
+            </select></label
+          >
+          @if (speedChoice() === 'custom') {
+            <div class="net-pair">
+              <label
+                ><span>Bajada (Mbps)</span
+                ><input type="number" min="0.1" step="0.5" [ngModel]="speedDown()" (ngModelChange)="speedDown.set($event)"
+              /></label>
+              <label
+                ><span>Subida (Mbps)</span
+                ><input type="number" min="0.1" step="0.5" [ngModel]="speedUp()" (ngModelChange)="speedUp.set($event)"
+              /></label>
+            </div>
+          }
+          <label class="net-check"
+            ><input type="checkbox" [ngModel]="speedBurst()" (ngModelChange)="speedBurst.set($event)" />Ráfaga (1.5×
+            durante 8 s)</label
+          >
+          @if (speedChoice() !== 'plan') {
+            <label
+              ><span>Motivo (queda en la bitácora)</span
+              ><input
+                placeholder="p. ej. Promoción de 3 meses"
+                [ngModel]="speedReason()"
+                (ngModelChange)="speedReason.set($event)"
+                maxlength="120"
+            /></label>
+          }
+          @if (speedDirection() === 'up') {
+            <p class="net-note">Sube la velocidad. Si es permanente, cambia también el plan del contrato.</p>
+          } @else if (speedDirection() === 'down') {
+            <p class="net-note net-note--warn">Baja la velocidad respecto a lo que tiene hoy.</p>
+          }
+        </div>
+      }
+      @case ('ip') {
+        <span class="confirm-dialog__icon confirm-dialog__icon--ok">⌖</span>
+        <div>
+          <span class="confirm-dialog__eyebrow">MIKROTIK</span>
+          <h2>Cambiar IP</h2>
+          <p>Se actualiza el target de la cola{{ sub()?.blocked ? ' y el bloqueo' : '' }}.</p>
+          <label><span>IP nueva</span><input inputmode="decimal" [ngModel]="newIp()" (ngModelChange)="newIp.set($event)" /></label>
+        </div>
+      }
+      @case ('reset') {
+        <span class="confirm-dialog__icon">↻</span>
+        <div>
+          <span class="confirm-dialog__eyebrow">MIKROTIK</span>
+          <h2>¿Reiniciar contadores?</h2>
+          <p>El consumo del mes vuelve a cero en el router y aquí.</p>
+        </div>
+      }
+      @case ('remove') {
+        <span class="confirm-dialog__icon">⊘</span>
+        <div>
+          <span class="confirm-dialog__eyebrow">MIKROTIK</span>
+          <h2>¿Eliminar la cola de {{ customerName() || customerId() }}?</h2>
+          <p>El cliente se queda sin límite de velocidad controlado por el CRM. Úsalo al dar de baja el servicio.</p>
+        </div>
+      }
+    }
+    @if (error()) {
+      <p class="net-error" role="alert">{{ error() }}</p>
+    }
+    <footer>
+      <button class="button" type="button" (click)="close()">Cancelar</button>
+      @switch (d) {
+        @case ('block') {
+          <button class="button button--danger" type="button" (click)="confirmBlock()">Sí, bloquear</button>
+        }
+        @case ('unblock') {
+          <button class="button button--primary" type="button" (click)="confirmUnblock()">Sí, reactivar</button>
+        }
+        @case ('speed') {
+          <button class="button button--primary" type="button" (click)="confirmSpeed()">Aplicar</button>
+        }
+        @case ('ip') {
+          <button class="button button--primary" type="button" (click)="confirmIp()">Guardar</button>
+        }
+        @case ('reset') {
+          <button class="button button--primary" type="button" (click)="confirmReset()">Reiniciar</button>
+        }
+        @case ('remove') {
+          <button class="button button--danger" type="button" (click)="confirmRemove()">Sí, eliminar</button>
+        }
+      }
+    </footer>
+  </section>
+}
+
+@if (toast()) {
+  <div class="net-toast"><span>✓</span>{{ toast() }}</div>
+}

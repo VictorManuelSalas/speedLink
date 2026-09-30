@@ -691,10 +691,18 @@ const seeds = [
   ]
 ] as const;
 
+/**
+ * Día N contado desde el 1 de enero de 2025. Antes se armaba «2025-01-34» para
+ * los últimos clientes: una fecha inválida que tiraba su ficha.
+ */
+function demoDay(day: number): string {
+  return new Date(Date.UTC(2025, 0, day)).toISOString().slice(0, 10);
+}
+
 export const CUSTOMERS: ReadonlyArray<Customer> = seeds.map((seed, index) => ({
   id: seed[0],
   organizationId: ORG_ID,
-  createdAt: `2025-01-${String(10 + index).padStart(2, '0')}T09:30:00-06:00`,
+  createdAt: `${demoDay(10 + index)}T09:30:00-06:00`,
   createdBy: ADMIN_USER,
   updatedAt: now,
   updatedBy: STAFF_USERS[index % STAFF_USERS.length],
@@ -712,7 +720,7 @@ export const CUSTOMERS: ReadonlyArray<Customer> = seeds.map((seed, index) => ({
   currentBalance: seed[12],
   technician: seed[13],
   lastActivity: seed[14],
-  installDate: `2025-01-${String(15 + index).padStart(2, '0')}T16:40:00-06:00`,
+  installDate: `${demoDay(15 + index)}T16:40:00-06:00`,
   latitude: seed[15],
   longitude: seed[16],
   gpsLocation: `${seed[15]}, ${seed[16]}`,

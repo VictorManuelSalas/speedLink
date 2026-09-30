@@ -776,7 +776,7 @@ kbd {
   content: '';
   position: absolute;
   inset: 24px;
-  background: #fff;
+  background: var(--color-surface);
   border-radius: 50%;
 }
 .donut div {
@@ -2316,4 +2316,43 @@ tbody tr:hover {
 .share-menu__panel > button.danger svg {
   background: #fee2e2;
   stroke: #dc2626;
+}
+
+/* Botón que abre un menú de WhatsApp: ícono verde como el de los menús. */
+.button > svg.whatsapp {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  padding: 2px;
+  border-radius: 50%;
+  background: #22c55e;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.whatsapp-last {
+  margin: 4px 0 0;
+  padding: 8px 10px 4px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 10.5px;
+}
+/* Aviso sugerido según el estado del registro. */
+.share-menu__panel > button.is-suggested {
+  background: color-mix(in srgb, #22c55e 10%, transparent);
+}
+
+/* Dashboard: filas de operación como enlaces y estado vacío de la actividad. */
+a.operation {
+  color: inherit;
+  text-decoration: none;
+}
+.activity-empty {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+.revenue-total span.is-down {
+  color: #dc2626;
 }

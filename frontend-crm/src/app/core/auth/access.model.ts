@@ -14,7 +14,9 @@ export type AccessAction =
   | 'export'
   // Permisos especiales de Equipamiento: revelar contraseñas del equipo o del WiFi del cliente.
   | 'credentials'
-  | 'wifi';
+  | 'wifi'
+  // Red (MikroTik): cortar y reactivar el internet del cliente.
+  | 'block';
 
 export type AccessModuleKey =
   | 'dashboard'
@@ -23,12 +25,14 @@ export type AccessModuleKey =
   | 'services'
   | 'equipment'
   | 'assignments'
+  | 'network'
   | 'contracts'
   | 'invoices'
   | 'payments'
   | 'expenses'
   | 'calendar'
   | 'tickets'
+  | 'reports'
   | 'settings'
   | 'users'
   | 'roles'
@@ -53,14 +57,16 @@ export const ACTION_LABELS: Readonly<Record<AccessAction, string>> = {
   export: 'Exportar',
   credentials: 'Ver credenciales del equipo',
   wifi: 'Ver WiFi del cliente',
+  block: 'Bloquear / desbloquear internet',
 };
 
 /** Acciones fuera de la matriz estándar; sólo algunos módulos las tienen. */
-export const SPECIAL_ACTIONS: ReadonlyArray<AccessAction> = ['credentials', 'wifi'];
+export const SPECIAL_ACTIONS: ReadonlyArray<AccessAction> = ['credentials', 'wifi', 'block'];
 
 export const SPECIAL_ACTION_HINTS: Readonly<Partial<Record<AccessAction, string>>> = {
   credentials: 'Revelar usuario y contraseña de administración de los equipos.',
   wifi: 'Revelar la contraseña del WiFi que usa el cliente.',
+  block: 'Cortar o reactivar el servicio de internet en el router MikroTik.',
 };
 
 export const ACCESS_ACTIONS: ReadonlyArray<AccessAction> = [
@@ -82,11 +88,14 @@ export const ACCESS_MODULES: ReadonlyArray<AccessModule> = [
   { key: 'services', label: 'Servicios', group: 'Red', description: 'Catálogo de planes y servicios.', actions: CRUD_EXPORT },
   { key: 'equipment', label: 'Equipamiento', group: 'Red', description: 'Inventario de equipos, acceso y WiFi.', actions: [...CRUD_EXPORT, 'credentials', 'wifi'] },
   { key: 'assignments', label: 'Asignaciones', group: 'Red', description: 'Equipos asignados a clientes.', actions: CRUD_EXPORT },
+  // Ver = estado y consumo; Editar = crear colas y cambiar velocidad.
+  { key: 'network', label: 'Red MikroTik', group: 'Red', description: 'Colas, velocidad, consumo y cortes en MikroTik.', actions: ['read', 'update', 'block'] },
   { key: 'invoices', label: 'Facturas', group: 'Finanzas', description: 'Facturación y notificaciones de cobro.', actions: CRUD_EXPORT },
   { key: 'payments', label: 'Pagos', group: 'Finanzas', description: 'Registro de pagos y recibos.', actions: CRUD_EXPORT },
   { key: 'expenses', label: 'Gastos', group: 'Finanzas', description: 'Gastos operativos.', actions: CRUD_EXPORT },
   { key: 'calendar', label: 'Calendario', group: 'Operación', description: 'Eventos, instalaciones y visitas.', actions: CRUD },
   { key: 'tickets', label: 'Tickets', group: 'Operación', description: 'Soporte y seguimiento de incidencias.', actions: CRUD_EXPORT },
+  { key: 'reports', label: 'Reportes', group: 'Finanzas', description: 'Cobranza, antigüedad de saldos, clientes y consumo.', actions: ['read', 'export'] },
   { key: 'settings', label: 'Centro de configuración', group: 'Administración', description: 'Organización, canales, plantillas y portal.', actions: ['read', 'update'] },
   { key: 'users', label: 'Usuarios', group: 'Administración', description: 'Alta, suspensión y contraseñas de usuarios.', actions: CRUD },
   { key: 'roles', label: 'Roles y permisos', group: 'Administración', description: 'Definición de roles y su acceso.', actions: CRUD },
@@ -218,6 +227,8 @@ export const SEED_ROLES: ReadonlyArray<Role> = [
       ...all('services'),
       ...all('equipment'),
       ...all('assignments'),
+      ...all('network'),
+      ...read('reports'),
       ...all('calendar'),
       ...actions('tickets', 'create', 'update'),
     ]),
@@ -230,7 +241,7 @@ export const SEED_ROLES: ReadonlyArray<Role> = [
     description: 'Atención de tickets y seguimiento a clientes.',
     system: false,
     permissions: normalizePermissions([
-      ...read('dashboard', 'equipment', 'assignments'),
+      ...read('dashboard', 'equipment', 'assignments', 'network'),
       ...actions('customers', 'update'),
       // Soporte ayuda con el WiFi del cliente, pero no administra los equipos.
       ...actions('equipment', 'wifi'),
@@ -249,6 +260,8 @@ export const SEED_ROLES: ReadonlyArray<Role> = [
       ...read('customers'),
       ...actions('assignments', 'update'),
       ...actions('equipment', 'update', 'credentials', 'wifi'),
+      // En la instalación crea la cola del cliente.
+      ...actions('network', 'update'),
       ...actions('calendar', 'update'),
       ...actions('tickets', 'update'),
     ]),
@@ -266,6 +279,9 @@ export const SEED_ROLES: ReadonlyArray<Role> = [
       ...all('invoices'),
       ...all('payments'),
       ...actions('expenses', 'create', 'update', 'export'),
+      ...all('reports'),
+      // Cobranza corta y reactiva el servicio por falta de pago.
+      ...actions('network', 'block'),
     ]),
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,

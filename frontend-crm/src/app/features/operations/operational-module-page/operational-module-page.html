@@ -48,7 +48,7 @@
     }
     @if (!editingContractId()) {
     @for (field of definition.fields; track field.key) {
-    @if (!(moduleKey === 'contracts' && field.key === 'totalMonthly')) {
+    @if (!(moduleKey === 'contracts' && field.key === 'totalMonthly') && isFieldVisible(field)) {
     <label [class.full]="field.key === 'description' || field.key === 'notes' || field.multiline" [class.has-error]="getFieldError(field.key)">
       <span class="field-label">{{ field.label
         }}
@@ -138,7 +138,11 @@
     }
   </div>
   <footer>
-    <small><b>*</b> Campos obligatorios según el modelo de datos.</small>
+    @if (serviceSpeedMissing()) {
+      <small class="field-error">Indica la bajada (Mbps) del plan de Internet.</small>
+    } @else {
+      <small><b>*</b> Campos obligatorios según el modelo de datos.</small>
+    }
     <button class="button" type="button" (click)="closeCreate()">Cancelar</button><button class="button button--primary"
       type="button" [disabled]="!canCreate()" (click)="createRecord()">
       @if (editingContractId()) { Guardar cambios } @else { Crear {{ definition.singular }} }

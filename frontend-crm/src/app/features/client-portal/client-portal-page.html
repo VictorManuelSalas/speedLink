@@ -146,6 +146,21 @@
             </article>
           }
         </section>
+        @if (netService()?.blocked) {
+          <section class="portal-suspended" role="alert">
+            <b>Tu servicio de internet está suspendido{{ netService()?.forPayment ? ' por falta de pago' : '' }}.</b>
+            <span>
+              @if (netService()?.forPayment) {
+                Liquida tu saldo pendiente y lo reactivamos. Si ya pagaste, envíanos tu comprobante.
+              } @else {
+                Comunícate con nosotros para reactivarlo.
+              }
+            </span>
+            @if (netService()?.forPayment && store.config().showInvoices) {
+              <button type="button" (click)="activeTab.set('Facturación')">Ver mis facturas</button>
+            }
+          </section>
+        }
         @if (store.config().showWifi && wifiNetworks().length) {
           <section class="client-card portal-wifi">
             <header>
@@ -182,20 +197,32 @@
             <dl class="service-details">
               <div>
                 <dt>Plan</dt>
-                <dd>{{ store.profile().plan }}</dd>
+                <dd>{{ netService()?.plan ?? store.profile().plan }}</dd>
               </div>
               <div>
                 <dt>Velocidad</dt>
-                <dd>{{ store.profile().speed }}</dd>
+                <dd>{{ netService()?.speed ?? store.profile().speed }}</dd>
               </div>
               <div>
                 <dt>Estado</dt>
-                <dd class="success">● En línea</dd>
+                @if (netService(); as net) {
+                  <dd [class.success]="net.status === 'online'" [class.danger]="net.status !== 'online'">
+                    {{ net.status === 'online' ? '● En línea' : net.status === 'blocked' ? '● Suspendido' : '● Sin conexión' }}
+                  </dd>
+                } @else {
+                  <dd class="success">● En línea</dd>
+                }
               </div>
               <div>
                 <dt>IP asignada</dt>
-                <dd>{{ store.profile().ipAddress }}</dd>
+                <dd>{{ netService()?.ip ?? store.profile().ipAddress }}</dd>
               </div>
+              @if (netService(); as net) {
+                <div>
+                  <dt>Consumo del mes</dt>
+                  <dd>{{ net.month }}</dd>
+                </div>
+              }
             </dl>
           </section>
           <section class="client-card">
@@ -331,28 +358,43 @@
             <header>
               <div>
                 <h2>Facturas</h2>
-                <p>{{ store.invoices().length }} documentos</p>
+                <p>
+                  {{ store.invoices().length }} documentos
+                  @if (store.balanceDue() > 0) {
+                    · saldo pendiente {{ store.balanceDue() | currency: 'MXN' : 'symbol-narrow' : '1.0-0' : 'es-MX' }}
+                  }
+                </p>
               </div>
             </header>
             <div class="client-table">
-              <div class="client-table__head">
+              <div class="client-table__head invoice-columns">
                 <span>Factura</span><span>Descripción</span><span>Vencimiento</span
-                ><span>Importe</span><span>Estado</span>
+                ><span>Importe</span><span>Estado</span><span></span>
               </div>
               @for (invoice of store.invoices(); track invoice.id) {
-                <div class="client-table__row">
-                  <b>{{ invoice.id }}</b
+                <div class="client-table__row invoice-columns">
+                  <b>{{ invoice.folio }}</b
                   ><span>{{ invoice.description }}</span
                   ><span>{{ invoice.dueAt | date: 'd MMM y' : '' : 'es-MX' }}</span
-                  ><b>{{
-                    invoice.amount | currency: 'MXN' : 'symbol-narrow' : '1.0-0' : 'es-MX'
-                  }}</b
+                  ><b
+                    >{{ invoice.amount | currency: 'MXN' : 'symbol-narrow' : '1.0-0' : 'es-MX' }}
+                    @if (invoice.balance > 0 && invoice.balance < invoice.amount) {
+                      <small class="invoice-balance">Saldo {{ invoice.balance | currency: 'MXN' : 'symbol-narrow' : '1.0-0' : 'es-MX' }}</small>
+                    }</b
                   ><span
                     class="portal-status"
                     [class.is-pending]="invoice.status === 'Pendiente'"
+                    [class.is-overdue]="invoice.status === 'Vencida'"
                     >{{ invoice.status }}</span
-                  >
+                  ><span class="invoice-actions">
+                    <a [href]="invoice.documentUrl" target="_blank" rel="noopener">Descargar</a>
+                    @if (invoice.balance > 0 && store.onlinePayments()?.available) {
+                      <button type="button" (click)="paying.set(invoice)">Pagar</button>
+                    }
+                  </span>
                 </div>
+              } @empty {
+                <p class="portal-table-empty">Aún no tienes facturas.</p>
               }
             </div>
           </section>
@@ -368,7 +410,7 @@
             <div class="client-table">
               <div class="client-table__head payment-columns">
                 <span>Fecha</span><span>Método</span><span>Referencia</span><span>Importe</span
-                ><span>Estado</span>
+                ><span>Comprobante</span>
               </div>
               @for (payment of store.payments(); track payment.id) {
                 <div class="client-table__row payment-columns">
@@ -378,7 +420,7 @@
                   ><b>{{
                     payment.amount | currency: 'MXN' : 'symbol-narrow' : '1.0-0' : 'es-MX'
                   }}</b
-                  ><span class="portal-status">{{ payment.status }}</span>
+                  ><span class="invoice-actions"><a [href]="payment.documentUrl" target="_blank" rel="noopener">Descargar</a></span>
                 </div>
               }
             </div>
@@ -409,7 +451,8 @@
               <footer>
                 <span
                   class="portal-status"
-                  [class.is-progress]="ticket.status === 'En progreso'"
+                  [class.is-progress]="ticket.status === 'En progreso' || ticket.status === 'En espera'"
+                  [class.is-done]="ticket.status === 'Resuelto'"
                   >{{ ticket.status }}</span
                 ><small
                   >Actualizado
@@ -495,6 +538,13 @@
     </header>
     <form (ngSubmit)="createTicket()">
       <label
+        ><span>¿Qué está pasando? *</span
+        ><select name="fault" [(ngModel)]="ticketFault">
+          @for (fault of faultTypes; track fault.value) {
+            <option [value]="fault.value">{{ fault.label }}</option>
+          }
+        </select></label
+      ><label
         ><span>Asunto *</span
         ><input name="subject" required [(ngModel)]="ticketSubject" /></label
       ><label
@@ -525,7 +575,7 @@
     </form>
   </section>
 }
-@if (selectedTicket(); as ticket) {
+@if (liveTicket(); as ticket) {
   <button class="portal-modal-backdrop" (click)="selectedTicket.set(null)"></button>
   <section class="portal-modal">
     <header>
@@ -537,7 +587,15 @@
       <button (click)="selectedTicket.set(null)">×</button>
     </header>
     <div class="ticket-preview">
-      <span class="portal-status is-progress">{{ ticket.status }}</span>
+      <span class="portal-status" [class.is-progress]="ticket.status !== 'Resuelto'" [class.is-done]="ticket.status === 'Resuelto'">{{ ticket.status }}</span>
+      <ol class="ticket-steps">
+        @for (step of ticket.steps ?? []; track step.label) {
+          <li [class.is-done]="step.done">
+            <span>{{ step.done ? '✓' : '' }}</span>
+            <div><b>{{ step.label }}</b>@if (step.at) {<small>{{ step.at | date: 'd MMM, HH:mm' : '' : 'es-MX' }}</small>}</div>
+          </li>
+        }
+      </ol>
       <p>{{ ticket.description }}</p>
       <dl>
         <div>
@@ -549,7 +607,62 @@
           <dd>{{ ticket.updatedAt | date: 'd MMM y, HH:mm' : '' : 'es-MX' }}</dd>
         </div>
       </dl>
+      <section class="ticket-replies">
+        <h3>Conversación</h3>
+        @for (reply of ticket.replies ?? []; track reply.id) {
+          <article>
+            <b>{{ reply.author }}</b><small>{{ reply.createdAt | date: 'd MMM, HH:mm' : '' : 'es-MX' }}</small>
+            <p>{{ reply.message }}</p>
+          </article>
+        } @empty {
+          <p class="ticket-replies__empty">Aún no hay respuestas. Te escribiremos aquí.</p>
+        }
+        @if (ticket.status !== 'Resuelto') {
+          <form (submit)="$event.preventDefault(); sendReply(ticket.id)">
+            <textarea
+              name="reply"
+              rows="3"
+              placeholder="Escribe una respuesta o agrega detalles…"
+              [value]="replyDraft()"
+              (input)="replyDraft.set($any($event.target).value)"
+            ></textarea>
+            <button class="client-button" type="submit" [disabled]="!replyDraft().trim()">Enviar</button>
+          </form>
+        }
+      </section>
     </div>
+  </section>
+}
+@if (paying(); as invoice) {
+  <button class="portal-modal-backdrop" (click)="paying.set(null)"></button>
+  <section class="portal-modal pay-modal" role="dialog" aria-modal="true">
+    <header>
+      <div>
+        <span>PAGO EN LÍNEA</span>
+        <h2>Pagar {{ invoice.folio }}</h2>
+        <p>{{ invoice.description }}</p>
+      </div>
+      <button (click)="paying.set(null)">×</button>
+    </header>
+    <div class="pay-body">
+      <div class="pay-amount">
+        <small>Total a pagar</small>
+        <b>{{ invoice.balance | currency: 'MXN' : 'symbol-narrow' : '1.2-2' : 'es-MX' }}</b>
+      </div>
+      <p>Procesado por {{ store.onlinePayments()?.provider }}.</p>
+      @if (store.onlinePayments()?.sandbox) {
+        <p class="pay-sandbox">
+          <b>Modo de pruebas:</b> no se cobra nada ni se piden datos de tarjeta. El pago se registra como aprobado para
+          probar el flujo completo.
+        </p>
+      }
+    </div>
+    <footer class="pay-footer">
+      <button type="button" class="client-button client-button--secondary" (click)="paying.set(null)">Cancelar</button>
+      <button type="button" class="client-button" (click)="confirmPayment()">
+        {{ store.onlinePayments()?.sandbox ? 'Simular pago aprobado' : 'Pagar' }}
+      </button>
+    </footer>
   </section>
 }
 <!-- El portal no vive dentro del layout del CRM: monta su propio visor. -->

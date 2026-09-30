@@ -1,0 +1,318 @@
+<header class="page-header net-header">
+  <div>
+    <span class="eyebrow">RED</span>
+    <h1>MikroTik</h1>
+    <p>Estado, consumo y control del internet de tus clientes en los routers conectados.</p>
+  </div>
+  <div class="net-header__actions">
+    @if (store.activeRouters().length > 1) {
+      <select aria-label="Router" [ngModel]="routerFilter()" (ngModelChange)="routerFilter.set($event)">
+        <option value="all">Todos los routers</option>
+        @for (router of store.activeRouters(); track router.id) {
+          <option [value]="router.id">{{ router.name }}</option>
+        }
+      </select>
+    }
+    @if (canConfigure()) {
+      <a class="button" routerLink="/settings/connections/mikrotik">Configurar routers</a>
+    }
+  </div>
+</header>
+
+@if (!store.connected()) {
+  <section class="card net-off">
+    <h2>No hay routers MikroTik conectados</h2>
+    <p>Agrega uno en Ajustes › Conexiones › MikroTik para controlar el internet de tus clientes.</p>
+  </section>
+} @else {
+  @for (router of store.activeRouters(); track router.id) {
+    @if (router.simulated) {
+      <p class="net-banner net-banner--info">
+        <b>{{ router.name }} es un router de demostración.</b> Las acciones se aplican a un router simulado y
+        las cifras de tráfico son simuladas. Con un router real, cada acción deja el comando listo para
+        ejecutarlo mientras no haya servidor.
+      </p>
+    }
+  }
+
+  <section class="net-kpis">
+    <article class="card"><span>Clientes con cola</span><b>{{ kpis().total }}</b><small>{{ withoutQueue().length }} activos sin cola</small></article>
+    <article class="card"><span>En línea</span><b class="ok">{{ kpis().online }}</b><small>{{ kpis().offline }} desconectados</small></article>
+    <article class="card"><span>Bloqueados</span><b class="bad">{{ kpis().blocked }}</b><small>Sin internet</small></article>
+    <article class="card"><span>Velocidad desfasada</span><b [class.warn]="kpis().sync > 0">{{ kpis().sync }}</b><small>Distinta a su plan</small></article>
+    <article class="card"><span>Tráfico ahora</span><b>{{ mbps(kpis().rx) }}</b><small>Bajada total</small></article>
+    <article class="card"><span>Consumo del mes</span><b>{{ gb(kpis().monthGb) }}</b><small>Todos los clientes</small></article>
+  </section>
+
+  @if (canBlock() && (store.cutoffCandidates().length || store.reactivationCandidates().length)) {
+    <section class="net-cutoff">
+      @if (store.cutoffCandidates().length) {
+        <article class="card">
+          <header>
+            <div>
+              <h2>Cortes por falta de pago</h2>
+              <p>
+                Facturas vencidas hace más de {{ store.rules().graceDays }} días de gracia. Horario de cortes
+                {{ store.rules().windowStart }}–{{ store.rules().windowEnd }}{{ store.rules().skipWeekends ? ', entre semana' : '' }}.
+              </p>
+            </div>
+            <button
+              class="button button--danger"
+              type="button"
+              [disabled]="!cutoffSelected().size"
+              (click)="bulkDialog.set('cutoff')"
+            >
+              Bloquear seleccionados ({{ cutoffSelected().size }})
+            </button>
+          </header>
+          @if (!store.inCutoffWindow()) {
+            <p class="net-note net-note--warn">Ahora mismo estás fuera del horario de cortes.</p>
+          }
+          <p class="net-note">«Avisar» abre WhatsApp con el aviso de corte y el estado de cuenta de cada cliente.</p>
+          <ul class="net-list">
+            <li class="net-list__all">
+              <label
+                ><input
+                  type="checkbox"
+                  [checked]="cutoffSelected().size === store.cutoffCandidates().length"
+                  (change)="selectAllCutoff()"
+                />Seleccionar todos</label
+              >
+            </li>
+            @for (item of store.cutoffCandidates(); track item.sub.customerId) {
+              <li>
+                <label
+                  ><input
+                    type="checkbox"
+                    [checked]="cutoffSelected().has(item.sub.customerId)"
+                    (change)="toggleCutoff(item.sub.customerId)"
+                  /><span
+                    ><a [routerLink]="['/customers', item.sub.customerId]" [queryParams]="{ tab: 'Red' }">{{
+                      item.sub.customerName
+                    }}</a
+                    ><small>{{ item.sub.customerId }} · {{ item.sub.ip }}</small></span
+                  ></label
+                >
+                <span class="net-list__debt"
+                  ><b>{{ item.overdue.amount | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }}</b
+                  ><small>{{ item.overdue.count }} factura(s) · {{ item.overdue.days }} días</small></span
+                >
+                @if (messages.canSend(item.sub.customerId)) {
+                  <button
+                    type="button"
+                    class="net-wa"
+                    [class.is-done]="cutoffWarnedAt(item.sub.customerId)"
+                    [title]="cutoffWarnedAt(item.sub.customerId) ? 'Ya avisado: vuelve a abrir el chat' : 'Abrir WhatsApp con el aviso de corte'"
+                    (click)="warnCutoff(item.sub.customerId)"
+                  >
+                    {{ cutoffWarnedAt(item.sub.customerId) ? '✓ Avisado ' + (cutoffWarnedAt(item.sub.customerId) | date: 'dd MMM') : 'Avisar' }}
+                  </button>
+                }
+              </li>
+            }
+          </ul>
+        </article>
+      }
+      @if (store.reactivationCandidates().length) {
+        <article class="card">
+          <header>
+            <div>
+              <h2>Ya pagaron y siguen bloqueados</h2>
+              <p>Bloqueados por falta de pago que ya no tienen facturas vencidas.</p>
+            </div>
+            <button class="button button--primary" type="button" (click)="reactivatePaid()">
+              Reactivar todos ({{ store.reactivationCandidates().length }})
+            </button>
+          </header>
+          <ul class="net-list">
+            @for (sub of store.reactivationCandidates(); track sub.customerId) {
+              <li>
+                <span
+                  ><a [routerLink]="['/customers', sub.customerId]" [queryParams]="{ tab: 'Red' }">{{ sub.customerName }}</a
+                  ><small>Bloqueado desde {{ sub.blockedAt | date: 'dd MMM' }}</small></span
+                >
+                @if (messages.canSend(sub.customerId)) {
+                  <button type="button" class="net-wa" (click)="reactivateAndNotify(sub.customerId)">Reactivar y avisar</button>
+                }
+              </li>
+            }
+          </ul>
+        </article>
+      }
+    </section>
+  }
+
+  <section class="card net-table-card">
+    <header class="net-table-head">
+      <div class="net-chips" role="tablist">
+        <button type="button" [class.is-on]="filter() === 'all'" (click)="setFilter('all')">Todos · {{ kpis().total }}</button>
+        <button type="button" [class.is-on]="filter() === 'online'" (click)="setFilter('online')">En línea · {{ kpis().online }}</button>
+        <button type="button" [class.is-on]="filter() === 'blocked'" (click)="setFilter('blocked')">Bloqueados · {{ kpis().blocked }}</button>
+        <button type="button" [class.is-on]="filter() === 'offline'" (click)="setFilter('offline')">Desconectados · {{ kpis().offline }}</button>
+        <button type="button" [class.is-on]="filter() === 'sync'" (click)="setFilter('sync')">Desfasados · {{ kpis().sync }}</button>
+        <button type="button" [class.is-on]="filter() === 'none'" (click)="setFilter('none')">Sin cola · {{ withoutQueue().length }}</button>
+      </div>
+      @if (filter() !== 'none') {
+        <input
+          type="search"
+          class="net-search"
+          placeholder="Buscar cliente, IP o cola…"
+          [ngModel]="query()"
+          (ngModelChange)="query.set($event)"
+        />
+      }
+    </header>
+
+    @if (selectedRows().length) {
+      <div class="net-bulk">
+        <b>{{ selectedRows().length }} seleccionado(s)</b>
+        @if (canBlock()) {
+          <button class="button button--danger" type="button" (click)="bulkReason.set('Falta de pago'); bulkDialog.set('block')">
+            Bloquear
+          </button>
+          <button class="button" type="button" (click)="bulkUnblock()">Desbloquear</button>
+        }
+        @if (canUpdate()) {
+          <button class="button" type="button" (click)="bulkSync()">Igualar velocidad al plan</button>
+        }
+        <button class="net-link-button" type="button" (click)="selected.set(emptySet)">Quitar selección</button>
+      </div>
+    }
+
+    @if (filter() === 'none') {
+      <ul class="net-list net-list--plain">
+        @for (customer of withoutQueue(); track customer.id) {
+          <li>
+            <span
+              ><b>{{ customer.name }}</b><small>{{ customer.id }} · {{ customer.ipAddress }} · {{ customer.speed }}</small></span
+            >
+            @if (canUpdate()) {
+              <a class="button" [routerLink]="['/customers', customer.id]" [queryParams]="{ tab: 'Red' }">Crear cola</a>
+            }
+          </li>
+        } @empty {
+          <li class="net-log__empty">Todos los clientes activos tienen cola.</li>
+        }
+      </ul>
+    } @else {
+      <div class="net-table-wrap">
+        <table class="net-table">
+          <thead>
+            <tr>
+              <th class="net-table__check"><input type="checkbox" aria-label="Seleccionar todos" [checked]="allSelected()" (change)="toggleAll()" /></th>
+              <th>Cliente</th>
+              <th>IP</th>
+              <th>Velocidad</th>
+              <th class="num">Ahora ↓</th>
+              <th class="num">Mes</th>
+              <th>Estado</th>
+              <th><span class="sr-only">Acciones</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of filteredRows(); track row.sub.customerId) {
+              <tr [class.is-selected]="selected().has(row.sub.customerId)">
+                <td class="net-table__check">
+                  <input
+                    type="checkbox"
+                    [attr.aria-label]="'Seleccionar ' + row.sub.customerName"
+                    [checked]="selected().has(row.sub.customerId)"
+                    (change)="toggle(row.sub.customerId)"
+                  />
+                </td>
+                <td>
+                  <a class="net-table__name" [routerLink]="['/customers', row.sub.customerId]" [queryParams]="{ tab: 'Red' }">{{
+                    row.sub.customerName
+                  }}</a>
+                  <small>{{ row.sub.customerId }}{{ store.activeRouters().length > 1 ? ' · ' + store.router(row.sub.routerId)?.name : '' }}</small>
+                </td>
+                <td class="mono">{{ row.sub.ip }}</td>
+                <td>
+                  {{ speedText(row.speed) }}
+                  @if (row.outOfSync) {
+                    <span class="net-pill net-pill--sync" title="Distinta a su plan">Desfasada</span>
+                  }
+                </td>
+                <td class="num">{{ row.status === 'online' ? mbps(row.rx) : '—' }}</td>
+                <td class="num">{{ gb(row.monthGb) }}</td>
+                <td>
+                  <span class="net-pill net-pill--{{ row.status }}">{{ statusLabel(row.status) }}</span>
+                </td>
+                <td class="net-table__actions">
+                  @if (canUpdate() && row.outOfSync) {
+                    <button type="button" (click)="syncOne(row)">Igualar al plan</button>
+                  }
+                  @if (canBlock()) {
+                    @if (row.sub.blocked) {
+                      <button type="button" (click)="unblockOne(row)">Desbloquear</button>
+                    } @else {
+                      <button type="button" class="is-danger" (click)="blockOne(row)">Bloquear</button>
+                    }
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="8" class="net-table__empty">Sin clientes con este filtro.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+
+  <section class="net-bottom">
+    <article class="card">
+      <h2>Mayor consumo del mes</h2>
+      <ol class="net-top">
+        @for (row of topConsumers(); track row.sub.customerId; let i = $index) {
+          <li>
+            <span class="net-top__rank">{{ i + 1 }}</span>
+            <span
+              ><a [routerLink]="['/customers', row.sub.customerId]" [queryParams]="{ tab: 'Red' }">{{ row.sub.customerName }}</a
+              ><small>{{ speedText(row.speed) }}</small></span
+            >
+            <b>{{ gb(row.monthGb) }}</b>
+          </li>
+        }
+      </ol>
+    </article>
+    <article class="card">
+      <h2>Bitácora de red</h2>
+      <app-network-log [entries]="recentLog()" [showCustomer]="true" />
+    </article>
+  </section>
+}
+
+@if (bulkDialog(); as mode) {
+  <button class="confirm-backdrop" type="button" aria-label="Cancelar" (click)="bulkDialog.set(null)"></button>
+  <section class="confirm-dialog net-dialog" role="alertdialog" aria-modal="true">
+    <span class="confirm-dialog__icon">⊘</span>
+    <div>
+      <span class="confirm-dialog__eyebrow">MIKROTIK</span>
+      <h2>
+        ¿Bloquear el internet de {{ mode === 'cutoff' ? cutoffSelected().size : selectedRows().length }} cliente(s)?
+      </h2>
+      <p>Sus IP entran a la lista de bloqueo del router y se quedan sin navegación hasta desbloquearlos.</p>
+      @if (mode === 'block') {
+        <label
+          ><span>Motivo</span
+          ><select [ngModel]="bulkReason()" (ngModelChange)="bulkReason.set($event)">
+            @for (reason of reasons; track reason) {
+              <option [value]="reason">{{ reason }}</option>
+            }
+          </select></label
+        >
+      }
+    </div>
+    <footer>
+      <button class="button" type="button" (click)="bulkDialog.set(null)">Cancelar</button>
+      <button class="button button--danger" type="button" (click)="confirmBulkBlock()">Sí, bloquear</button>
+    </footer>
+  </section>
+}
+
+@if (toast()) {
+  <div class="net-toast"><span>✓</span>{{ toast() }}</div>
+}

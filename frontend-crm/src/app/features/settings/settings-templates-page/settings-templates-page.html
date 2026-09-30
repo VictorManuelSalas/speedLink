@@ -8,7 +8,7 @@
       <div>
         <h1>Plantillas</h1>
         <p>
-          Contenido reutilizable para correo y SMS. Escribe <b>$</b> en el asunto o el cuerpo para
+          Contenido reutilizable para correo, WhatsApp y SMS. Las de WhatsApp aparecen en el botón «WhatsApp» de las fichas de su módulo. Escribe <b>$</b> en el asunto o el cuerpo para
           insertar un campo del módulo asociado, incluidos sus campos personalizados.
         </p>
       </div>
@@ -22,7 +22,7 @@
 <section class="settings-metrics">
   <article class="settings-metric settings-metric--blue">
     <span>Plantillas</span><strong>{{ totalCount() }}</strong
-    ><small>{{ emailCount() }} de correo · {{ totalCount() - emailCount() }} de SMS</small>
+    ><small>{{ emailCount() }} de correo · {{ whatsappCount() }} de WhatsApp · {{ totalCount() - emailCount() - whatsappCount() }} de SMS</small>
   </article>
   <article class="settings-metric settings-metric--green">
     <span>Activas</span><strong>{{ activeCount() }}</strong
@@ -57,7 +57,8 @@
       <select aria-label="Canal" [ngModel]="channelFilter()" (ngModelChange)="channelFilter.set($event)">
         <option value="all">Todos los canales</option>
         <option value="email">Correo</option>
-        <option value="sms">SMS / WhatsApp</option>
+        <option value="whatsapp">WhatsApp</option>
+        <option value="sms">SMS</option>
       </select>
       <select aria-label="Módulo" [ngModel]="moduleFilter()" (ngModelChange)="moduleFilter.set($event)">
         <option value="all">Todos los módulos</option>
@@ -150,7 +151,8 @@
               ><span>Canal *</span>
               <select [ngModel]="draft().channel" (ngModelChange)="setChannel($event)">
                 <option value="email">Correo</option>
-                <option value="sms">SMS / WhatsApp</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="sms">SMS</option>
               </select></label
             >
             <label
@@ -169,7 +171,7 @@
               <select
                 [ngModel]="draft().format"
                 (ngModelChange)="setFormat($event)"
-                [disabled]="draft().channel === 'sms'"
+                [disabled]="draft().channel !== 'email'"
               >
                 <option value="text">Texto plano</option>
                 <option value="html">HTML</option>
@@ -183,6 +185,44 @@
               </select></label
             >
           </div>
+
+          @if (draft().channel === 'whatsapp') {
+            <div class="template-wa-options">
+              <b>Opciones de WhatsApp</b>
+              <small>Aparece en el botón «WhatsApp» de {{ moduleLabel(draft().module) === 'Todos los módulos' ? 'todas las fichas' : 'las fichas de ' + moduleLabel(draft().module) }}.</small>
+              @if (documentLabel(); as doc) {
+                <label class="template-check"
+                  ><input
+                    type="checkbox"
+                    [ngModel]="!!draft().attachDocument"
+                    (ngModelChange)="update('attachDocument', $event)"
+                  /><span
+                    >Incluir siempre el enlace de descarga ({{ doc }})<small
+                      >Si el texto no usa la variable del enlace, se agrega al final del mensaje.</small
+                    ></span
+                  ></label
+                >
+              }
+              @if (condition(); as cond) {
+                <div class="template-when">
+                  <span>Mostrar solo cuando — {{ cond.label }}:</span>
+                  <div>
+                    @for (option of cond.options; track option.value) {
+                      <button
+                        type="button"
+                        [class.is-on]="showsWhen(option.value)"
+                        [attr.aria-pressed]="showsWhen(option.value)"
+                        (click)="toggleShowWhen(option.value)"
+                      >
+                        {{ option.label }}
+                      </button>
+                    }
+                  </div>
+                  <small>{{ draft().showWhen?.length ? 'Se oculta en los demás estados.' : 'Sin selección: se ofrece siempre.' }}</small>
+                </div>
+              }
+            </div>
+          }
 
           @if (draft().channel === 'email') {
             <label
@@ -275,6 +315,14 @@
               sandbox=""
               [srcdoc]="previewHtml()"
             ></iframe>
+          } @else if (draft().channel === 'whatsapp') {
+            <div class="preview-whatsapp">
+              @if (preview().body) {
+                <p [innerHTML]="whatsappHtml()"></p>
+              } @else {
+                <p class="preview-whatsapp__empty">El mensaje aparecerá aquí.</p>
+              }
+            </div>
           } @else {
             <pre>{{ preview().body || 'El contenido aparecerá aquí.' }}</pre>
           }

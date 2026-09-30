@@ -1,0 +1,448 @@
+<header class="settings-header settings-header--section">
+  <div>
+    <div class="breadcrumbs">
+      <a routerLink="/settings">Ajustes</a><b>›</b><a routerLink="/settings/connections">Conexiones</a><b>›</b
+      ><span>MikroTik</span>
+    </div>
+    <div class="settings-title">
+      <span class="settings-icon settings-icon--large mk-mark">MT</span>
+      <div>
+        <h1>MikroTik</h1>
+        <p>Routers, velocidades por plan y reglas para cortar y reactivar el internet de tus clientes.</p>
+      </div>
+    </div>
+  </div>
+  @if (store.connected()) {
+    <a class="button" routerLink="/network">Ver la red ›</a>
+  }
+</header>
+
+@if (!canEdit()) {
+  <p class="channel-readonly">Tu rol solo permite consultar esta configuración.</p>
+}
+
+<nav class="mk-tabs" role="tablist">
+  <button type="button" role="tab" [class.is-on]="tab() === 'routers'" (click)="tab.set('routers')">
+    Routers · {{ store.routers().length }}
+  </button>
+  <button type="button" role="tab" [class.is-on]="tab() === 'profiles'" (click)="tab.set('profiles')">
+    Perfiles de velocidad · {{ store.profiles().length }}
+  </button>
+  <button type="button" role="tab" [class.is-on]="tab() === 'rules'" (click)="tab.set('rules')">Cortes y reactivación</button>
+</nav>
+
+@switch (tab()) {
+  @case ('routers') {
+    <section class="mk-section">
+      <header class="mk-section__head">
+        <p>
+          Cada cliente es una <b>cola simple</b> en su router, con su IP como target y la velocidad del plan. Para
+          bloquear, su IP entra a una <b>address-list</b> que el firewall descarta.
+        </p>
+        @if (canEdit()) {
+          <button class="button button--primary" type="button" (click)="openRouter()">＋ Agregar router</button>
+        }
+      </header>
+      <div class="mk-routers">
+        @for (router of store.routers(); track router.id) {
+          <article class="settings-content-card mk-router" [class.is-off]="!router.enabled">
+            <header>
+              <div>
+                <h2>
+                  {{ router.name }}
+                  @if (router.simulated) {
+                    <span class="mk-badge">Demo</span>
+                  }
+                </h2>
+                <small>{{ router.node || 'Sin nodo' }}</small>
+              </div>
+              <label class="channel-switch"
+                ><input type="checkbox" [checked]="router.enabled" [disabled]="!canEdit()" (change)="toggleRouter(router)" /><i></i
+                ><span>{{ router.enabled ? 'Activo' : 'Inactivo' }}</span></label
+              >
+            </header>
+            <dl>
+              <div><dt>Dirección</dt><dd>{{ router.host }}:{{ router.port }}</dd></div>
+              <div><dt>Acceso</dt><dd>{{ router.api === 'rest' ? 'REST (RouterOS 7)' : 'API-SSL (RouterOS 6)' }}</dd></div>
+              <div><dt>Usuario</dt><dd>{{ router.username }} · ●●●● {{ router.secretTail }}</dd></div>
+              <div><dt>Lista de bloqueo</dt><dd>{{ router.blockList }}</dd></div>
+              <div><dt>Clientes</dt><dd>{{ store.countOn(router.id) }} colas</dd></div>
+              <div>
+                <dt>Última prueba</dt>
+                <dd>
+                  @if (router.lastCheckAt) {
+                    {{ router.lastCheckOk ? '✓' : '✕' }} {{ router.lastCheckAt | date: 'dd MMM, HH:mm' }}
+                  } @else {
+                    Nunca
+                  }
+                </dd>
+              </div>
+            </dl>
+            @if (router.identity) {
+              <p class="mk-identity">{{ router.identity }} · {{ router.version }}</p>
+            }
+            @if (testResult()[router.id]; as result) {
+              <p [class.mk-ok]="result.ok" [class.net-error]="!result.ok">{{ result.message }}</p>
+            }
+            <footer>
+              <button class="button" type="button" [disabled]="testing() === router.id" (click)="test(router)">
+                {{ testing() === router.id ? 'Probando…' : 'Probar conexión' }}
+              </button>
+              <button class="button" type="button" (click)="scriptFor.set(router)">Script de configuración</button>
+              @if (canEdit()) {
+                <button class="button" type="button" (click)="openRouter(router)">Editar</button>
+                <button class="button mk-danger" type="button" (click)="removingRouter.set(router)">Eliminar</button>
+              }
+            </footer>
+          </article>
+        } @empty {
+          <article class="settings-content-card mk-empty">
+            <h2>Sin routers</h2>
+            <p>Agrega tu primer router MikroTik para controlar el internet de tus clientes desde el CRM.</p>
+          </article>
+        }
+      </div>
+      <p class="net-note mk-server-note">
+        Sin servidor, el navegador no puede hablar con un router real (y no debe: la contraseña quedaría expuesta).
+        Mientras tanto, cada acción sobre un router real deja en la bitácora el comando exacto para pegarlo en
+        Winbox › New Terminal.
+      </p>
+    </section>
+  }
+
+  @case ('profiles') {
+    <section class="mk-section">
+      <header class="mk-section__head">
+        <p>
+          <b>Cada servicio de Internet es un perfil.</b> Crear un plan en Servicios crea su perfil; cambiar su velocidad
+          actualiza las colas de los clientes con ese plan; eliminarlo quita el perfil y sus clientes conservan la
+          velocidad que tenían. Los perfiles manuales sirven para clientes sin contrato.
+        </p>
+        <div class="mk-head-actions">
+          @if (canEdit()) {
+            <button class="button" type="button" (click)="openProfile()">Perfil manual</button>
+          }
+          <a class="button button--primary" routerLink="/services" [queryParams]="{ create: 'true', type: 'Internet' }"
+            >＋ Nuevo plan de Internet</a
+          >
+        </div>
+      </header>
+      @if (store.plansWithoutSpeed().length) {
+        <p class="net-banner net-banner--warn">
+          <b>{{ store.plansWithoutSpeed().length }} servicio(s) de Internet sin velocidad:</b>
+          @for (plan of store.plansWithoutSpeed(); track plan.id) {
+            <a class="mk-inline" [routerLink]="['/services', plan.id]">{{ plan['name'] }}</a>
+          }
+          <span>Agrega su bajada en Mbps para crear su perfil.</span>
+        </p>
+      }
+      <div class="settings-content-card mk-table-card">
+        <table class="mk-table">
+          <thead>
+            <tr>
+              <th>Perfil</th>
+              <th>Bajada / subida</th>
+              <th>Ráfaga</th>
+              <th>Plan ligado</th>
+              <th class="num">Clientes</th>
+              <th><span class="mk-sr">Acciones</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (profile of store.profiles(); track profile.id) {
+              <tr>
+                <td><b>{{ profile.name }}</b></td>
+                <td>{{ speedText(profile) }}</td>
+                <td>{{ profile.burst ? '1.5× · 8 s' : '—' }}</td>
+                <td>
+                  @if (isPlanProfile(profile)) {
+                    <a class="mk-plan" [routerLink]="['/services', profile.serviceId]">{{ planName(profile.serviceId) }}</a>
+                  } @else {
+                    <span class="mk-manual">Manual · por velocidad</span>
+                  }
+                </td>
+                <td class="num">{{ store.profileUsage(profile.id) }}</td>
+                <td class="mk-actions">
+                  @if (canEdit()) {
+                    <button type="button" (click)="openProfile(profile)">Editar</button>
+                    @if (!isPlanProfile(profile)) {
+                      <button type="button" class="mk-danger" (click)="removingProfile.set(profile)">Eliminar</button>
+                    }
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  }
+
+  @case ('rules') {
+    <section class="mk-section">
+      <fieldset class="settings-content-card channel-card" [disabled]="!canEdit()">
+        <header class="channel-card__header">
+          <div>
+            <h2>Corte por falta de pago</h2>
+            <p>Quién aparece en «Red › Cortes por falta de pago» y cuándo se permite cortar.</p>
+          </div>
+        </header>
+        <div class="channel-grid">
+          <label
+            ><span>Días de gracia tras el vencimiento</span
+            ><input
+              type="number"
+              min="0"
+              max="60"
+              [ngModel]="rulesDraft().graceDays"
+              (ngModelChange)="setRule('graceDays', $event)"
+            />
+            <small class="channel-hint">Días que el cliente conserva el internet después de vencer su factura.</small>
+          </label>
+          <div></div>
+          <label
+            ><span>Cortar desde</span
+            ><input type="time" [ngModel]="rulesDraft().windowStart" (ngModelChange)="setRule('windowStart', $event)"
+          /></label>
+          <label
+            ><span>Hasta</span
+            ><input type="time" [ngModel]="rulesDraft().windowEnd" (ngModelChange)="setRule('windowEnd', $event)"
+          /></label>
+          <label class="net-check channel-wide"
+            ><input type="checkbox" [ngModel]="rulesDraft().skipWeekends" (ngModelChange)="setRule('skipWeekends', $event)" />No
+            cortar sábados ni domingos (nadie puede pagar en sucursal)</label
+          >
+          <label class="net-check channel-wide"
+            ><input
+              type="checkbox"
+              [ngModel]="rulesDraft().reactivateOnPayment"
+              (ngModelChange)="setRule('reactivateOnPayment', $event)"
+            />Proponer la reactivación en cuanto el cliente ya no tenga facturas vencidas</label
+          >
+        </div>
+      </fieldset>
+      <p class="net-note mk-server-note">
+        Hoy los cortes se hacen desde la pantalla Red con un clic, revisando la lista. Cuando exista el servidor, podrá
+        ejecutarlos solo dentro de este horario.
+      </p>
+      @if (rulesError()) {
+        <p class="net-error">{{ rulesError() }}</p>
+      }
+      @if (canEdit() && rulesDirty()) {
+        <footer class="channel-savebar" role="status">
+          <span>Tienes cambios sin guardar.</span>
+          <div>
+            <button class="button" type="button" (click)="discardRules()">Descartar</button>
+            <button class="button button--primary" type="button" (click)="saveRules()">Guardar cambios</button>
+          </div>
+        </footer>
+      }
+    </section>
+  }
+}
+
+<!-- Diálogo: router -->
+@if (routerEditor(); as editor) {
+  <button class="settings-modal-backdrop" type="button" aria-label="Cerrar" (click)="routerEditor.set(null)"></button>
+  <section class="settings-modal mk-dialog" role="dialog" aria-modal="true" aria-label="Router">
+    <header>
+      <div>
+        <span>MikroTik</span>
+        <h2>{{ editor.id ? 'Editar router' : 'Agregar router' }}</h2>
+        <p>Usa un usuario exclusivo para el CRM, con permisos limitados.</p>
+      </div>
+      <button class="icon-button" type="button" aria-label="Cerrar" (click)="routerEditor.set(null)">×</button>
+    </header>
+    <form (submit)="saveRouter($event)" novalidate>
+      <div class="channel-grid mk-form">
+        <label [class.has-error]="routerFieldError('name')"
+          ><span>Nombre <b>*</b></span
+          ><input placeholder="Torre Norte" [ngModel]="routerDraft().name" (ngModelChange)="setRouter('name', $event)" name="name" />
+          @if (routerFieldError('name'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+        <label
+          ><span>Nodo / torre</span
+          ><input placeholder="Ejido Martha" [ngModel]="routerDraft().node" (ngModelChange)="setRouter('node', $event)" name="node"
+        /></label>
+        <label [class.has-error]="routerFieldError('host')"
+          ><span>IP o dominio <b>*</b></span
+          ><input placeholder="10.20.4.1" [ngModel]="routerDraft().host" (ngModelChange)="setRouter('host', $event)" name="host" />
+          @if (routerFieldError('host'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+        <label
+          ><span>Acceso</span
+          ><span class="settings-select"
+            ><select [ngModel]="routerDraft().api" (ngModelChange)="setRouter('api', $event)" name="api">
+              <option value="rest">REST · RouterOS 7</option>
+              <option value="api-ssl">API-SSL · RouterOS 6</option></select
+            ><i>⌄</i></span
+          ></label
+        >
+        <label [class.has-error]="routerFieldError('port')"
+          ><span>Puerto <b>*</b></span
+          ><input type="number" [ngModel]="routerDraft().port" (ngModelChange)="setRouter('port', +$event)" name="port" />
+          @if (routerFieldError('port'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+        <label [class.has-error]="routerFieldError('blockList')"
+          ><span>Lista de bloqueo <b>*</b></span
+          ><input [ngModel]="routerDraft().blockList" (ngModelChange)="setRouter('blockList', $event)" name="blockList" />
+          @if (routerFieldError('blockList'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+        <label [class.has-error]="routerFieldError('username')"
+          ><span>Usuario <b>*</b></span
+          ><input autocomplete="off" [ngModel]="routerDraft().username" (ngModelChange)="setRouter('username', $event)" name="username" />
+          @if (routerFieldError('username'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+        <label
+          ><span>Contraseña {{ editor.id ? '' : '*' }}</span
+          ><input
+            type="password"
+            autocomplete="new-password"
+            [placeholder]="editor.id ? 'Sin cambios' : ''"
+            [ngModel]="routerSecret()"
+            (ngModelChange)="routerSecret.set($event)"
+            name="secret"
+          />
+          <small class="channel-hint">Se enviará al servidor; aquí solo quedan sus últimos 4 caracteres.</small>
+        </label>
+      </div>
+      @if (routerError()) {
+        <p class="net-error mk-form-error">{{ routerError() }}</p>
+      }
+      <footer>
+        <button class="button" type="button" (click)="routerEditor.set(null)">Cancelar</button>
+        <button class="button button--primary" type="submit">{{ editor.id ? 'Guardar' : 'Agregar router' }}</button>
+      </footer>
+    </form>
+  </section>
+}
+
+<!-- Diálogo: script -->
+@if (scriptFor(); as router) {
+  <button class="settings-modal-backdrop" type="button" aria-label="Cerrar" (click)="scriptFor.set(null)"></button>
+  <section class="settings-modal mk-dialog" role="dialog" aria-modal="true" aria-label="Script de configuración">
+    <header>
+      <div>
+        <span>{{ router.name }}</span>
+        <h2>Script de configuración</h2>
+        <p>Pégalo una sola vez en Winbox › New Terminal para preparar el router.</p>
+      </div>
+      <button class="icon-button" type="button" aria-label="Cerrar" (click)="scriptFor.set(null)">×</button>
+    </header>
+    <div class="mk-script">
+      <pre>{{ script() }}</pre>
+    </div>
+    <footer class="mk-dialog-footer">
+      <button class="button" type="button" (click)="scriptFor.set(null)">Cerrar</button>
+      <button class="button button--primary" type="button" (click)="copyScript()">{{ scriptCopied() ? 'Copiado ✓' : 'Copiar script' }}</button>
+    </footer>
+  </section>
+}
+
+<!-- Diálogo: perfil -->
+@if (profileEditor(); as editor) {
+  <button class="settings-modal-backdrop" type="button" aria-label="Cerrar" (click)="profileEditor.set(null)"></button>
+  <section class="settings-modal mk-dialog mk-dialog--small" role="dialog" aria-modal="true" aria-label="Perfil de velocidad">
+    <header>
+      <div>
+        <span>Perfil de velocidad</span>
+        <h2>{{ editor.id ? 'Editar perfil' : 'Nuevo perfil' }}</h2>
+      </div>
+      <button class="icon-button" type="button" aria-label="Cerrar" (click)="profileEditor.set(null)">×</button>
+    </header>
+    <form (submit)="saveProfile($event)" novalidate>
+      <div class="channel-grid mk-form">
+        <label class="channel-wide"
+          ><span>Nombre <b>*</b></span
+          ><input name="pname" [ngModel]="profileDraft().name" (ngModelChange)="setProfile('name', $event)"
+        /></label>
+        <label
+          ><span>Bajada (Mbps) <b>*</b></span
+          ><input name="down" type="number" min="0.1" step="0.5" [ngModel]="profileDraft().download" (ngModelChange)="setProfile('download', $event)"
+        /></label>
+        <label
+          ><span>Subida (Mbps) <b>*</b></span
+          ><input name="up" type="number" min="0.1" step="0.5" [ngModel]="profileDraft().upload" (ngModelChange)="setProfile('upload', $event)"
+        /></label>
+        @if (editor.serviceId) {
+          <p class="net-banner net-banner--info channel-wide">
+            Es el plan «{{ planName(editor.serviceId) }}» de Servicios: al guardar se actualiza el servicio y la cola de
+            los clientes que tienen este plan.
+          </p>
+        }
+        <label class="net-check channel-wide"
+          ><input name="burst" type="checkbox" [ngModel]="profileDraft().burst" (ngModelChange)="setProfile('burst', $event)" />Ráfaga:
+          1.5× durante 8 s al abrir páginas</label
+        >
+      </div>
+      @if (profileError()) {
+        <p class="net-error mk-form-error">{{ profileError() }}</p>
+      }
+      <footer>
+        <button class="button" type="button" (click)="profileEditor.set(null)">Cancelar</button>
+        <button class="button button--primary" type="submit">Guardar</button>
+      </footer>
+    </form>
+  </section>
+}
+
+@if (removingRouter(); as router) {
+  <button class="confirm-backdrop" type="button" aria-label="Cancelar" (click)="removingRouter.set(null)"></button>
+  <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+    <span class="confirm-dialog__icon">⊘</span>
+    <div>
+      <span class="confirm-dialog__eyebrow">MIKROTIK</span>
+      <h2>¿Eliminar «{{ router.name }}»?</h2>
+      <p>
+        @if (store.countOn(router.id)) {
+          Tiene {{ store.countOn(router.id) }} clientes: no se puede eliminar mientras tenga colas. Desactívalo si solo
+          quieres ocultarlo.
+        } @else {
+          Se quita del CRM. El router sigue funcionando igual.
+        }
+      </p>
+    </div>
+    <footer>
+      <button class="button" type="button" (click)="removingRouter.set(null)">Cancelar</button>
+      @if (!store.countOn(router.id)) {
+        <button class="button button--danger" type="button" (click)="confirmRemoveRouter()">Sí, eliminar</button>
+      }
+    </footer>
+  </section>
+}
+
+@if (removingProfile(); as profile) {
+  <button class="confirm-backdrop" type="button" aria-label="Cancelar" (click)="removingProfile.set(null)"></button>
+  <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+    <span class="confirm-dialog__icon">⊘</span>
+    <div>
+      <span class="confirm-dialog__eyebrow">PERFIL DE VELOCIDAD</span>
+      <h2>¿Eliminar «{{ profile.name }}»?</h2>
+      <p>
+        Las colas existentes no cambian.
+        @if (store.profileUsage(profile.id)) {
+          {{ store.profileUsage(profile.id) }} cliente(s) usan este perfil por su plan: al igualarlos al plan se usará la
+          velocidad del nombre del plan.
+        }
+      </p>
+    </div>
+    <footer>
+      <button class="button" type="button" (click)="removingProfile.set(null)">Cancelar</button>
+      <button class="button button--danger" type="button" (click)="confirmRemoveProfile()">Sí, eliminar</button>
+    </footer>
+  </section>
+}
+
+@if (toast()) {
+  <div class="settings-toast"><span>✓</span>{{ toast() }}</div>
+}

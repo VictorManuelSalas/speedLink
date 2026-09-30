@@ -23,12 +23,17 @@ import {
   RecordSummary,
 } from '../../../shared/record-detail-shell';
 
+import { CustomerNetwork } from '../../network/customer-network/customer-network';
+import { WhatsappMenu } from '../../../shared/whatsapp-menu';
+
 @Component({
   selector: 'app-ticket-detail-page',
   imports: [
     AttachmentPicker,
     FileItem,
     CustomFieldsCard,
+    CustomerNetwork,
+    WhatsappMenu,
     DatePipe,
     RecordDetailLayout,
     RecordField,

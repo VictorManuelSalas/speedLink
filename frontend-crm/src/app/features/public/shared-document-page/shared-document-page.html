@@ -1,0 +1,42 @@
+<main class="doc-page">
+  <section class="doc-card">
+    <header>
+      @if (org.logo) {
+        <img [src]="org.logo" alt="" />
+      }
+      <div>
+        <b>{{ org.name }}</b>
+        <small>{{ org.phone }} · {{ org.email }}</small>
+      </div>
+    </header>
+
+    @if (!validToken()) {
+      <div class="doc-state doc-state--error">
+        <span>⊘</span>
+        <h1>Enlace no válido</h1>
+        <p>Revisa que el enlace esté completo o pide que te lo reenvíen.</p>
+      </div>
+    } @else if (loading()) {
+      <div class="doc-state">
+        <span class="doc-spinner" aria-hidden="true"></span>
+        <h1>Preparando tu {{ label().toLowerCase() }}…</h1>
+      </div>
+    } @else if (document(); as doc) {
+      <div class="doc-state">
+        <span class="doc-icon">▤</span>
+        <h1>{{ doc.title }} {{ doc.reference }}</h1>
+        <p>
+          {{ downloaded() ? 'La descarga empezó. Si no ves el archivo, usa el botón.' : 'Tu documento está listo.' }}
+        </p>
+        <button type="button" (click)="download()">⇩ Descargar PDF</button>
+      </div>
+    } @else {
+      <div class="doc-state doc-state--error">
+        <span>?</span>
+        <h1>Documento no disponible</h1>
+        <p>No encontramos este {{ label().toLowerCase() }}. Escríbenos a {{ org.phone }} y te lo mandamos.</p>
+      </div>
+    }
+    <footer>Enlace personal: no lo compartas.</footer>
+  </section>
+</main>

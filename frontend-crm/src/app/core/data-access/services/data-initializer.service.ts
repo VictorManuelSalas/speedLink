@@ -11,6 +11,13 @@ import type { OperationalRecord } from '../../../features/operations/operational
 import { OPERATIONAL_MODULES } from '../../../features/operations/operational-modules.data';
 import { CUSTOMERS } from '../mock-crm-data';
 import { DEMO_ASSIGNMENTS, DEMO_EQUIPMENT } from '../demo-fixtures';
+import { mbpsIn } from '../../network/mikrotik.model';
+
+/** Bajada/subida de un plan de internet a partir de su nombre; subida = 1/5. */
+function internetSpeed(type: string, name: string): Partial<OperationalRecord> {
+  const mbps = type === 'Internet' ? mbpsIn(name) : null;
+  return mbps ? { downloadMbps: mbps, uploadMbps: Math.max(1, Math.round(mbps / 5)) } : {};
+}
 
 @Injectable({
   providedIn: 'root',
@@ -78,6 +85,7 @@ export class DataInitializerService {
     // Se mezcla y no se reemplaza: los registros de módulos personalizados
     // (cm_…) ya se cargaron del almacenamiento y no vienen en los datos demo.
     this.operationalStore.records.update((current) => ({ ...current, ...recordsToLoad }));
+    this.operationalStore.dataReady.set(true);
   }
 
   /**
@@ -126,6 +134,8 @@ export class DataInitializerService {
       type: service.type,
       contracts: contractCount.get(service.id) ?? 0,
       monthlyRevenue: monthlyRevenue.get(service.id) ?? 0,
+      // Los planes de internet traen la velocidad en el nombre («… 50 Mbps»).
+      ...internetSpeed(service.type, service.name),
       status: service.status,
     } as OperationalRecord));
   }

@@ -121,3 +121,51 @@
           height: 34px;
         }
       }
+
+.marker.whatsapp {
+  background: #22c55e;
+  color: #fff;
+  font-size: 18px;
+}
+.wa-filter.active {
+  color: #15803d !important;
+}
+.badges .source {
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.wa-message {
+  margin-top: 10px;
+
+  summary {
+    color: #15803d;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  p {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-radius: 0 10px 10px 10px;
+    background: #f0fdf4;
+    color: var(--color-text-primary);
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+:host-context(.app-frame--dark) {
+  .badges .source {
+    background: #172554;
+    color: #bfdbfe;
+  }
+  .wa-message p {
+    background: #052e16;
+  }
+}

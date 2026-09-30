@@ -124,6 +124,9 @@ export const ORGANIZATION = {
   get phone(): string {
     return liveProfile().phone;
   },
+  get website(): string {
+    return liveProfile().website;
+  },
   get address(): string {
     return formatAddress(liveProfile());
   },

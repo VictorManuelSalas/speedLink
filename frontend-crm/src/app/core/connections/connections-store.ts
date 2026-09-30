@@ -1,4 +1,6 @@
-import { Injectable, computed, effect, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { MikrotikStore } from '../network/mikrotik.store';
+import { AuditLog } from '../audit/audit-log';
 import { runtimeConfig } from '../runtime-config';
 import { currentOrganization, isValidRfc } from '../organization/organization.model';
 import {
@@ -55,6 +57,8 @@ export interface ApiTestResult {
 
 @Injectable({ providedIn: 'root' })
 export class ConnectionsStore {
+  private readonly mikrotik = inject(MikrotikStore);
+  private readonly audit = inject(AuditLog);
   readonly state = signal<ConnectionsState>(this.read());
 
   /** Dirección del servidor: se fija al desplegar (runtime-config.js), no desde Ajustes. */
@@ -70,6 +74,7 @@ export class ConnectionsStore {
       whatsapp: 'active',
       payments: this.integrationStatus(state.payments.enabled, this.validatePayments(state.payments, false)),
       cfdi: this.integrationStatus(state.cfdi.enabled, this.validateCfdi(state.cfdi, false)),
+      mikrotik: this.mikrotikStatus(),
     };
   });
 
@@ -102,7 +107,8 @@ export class ConnectionsStore {
   saveMapsKey(key: string, actor: string): ConnectionResult {
     const error = this.validateMapsKey(key);
     if (error) return { ok: false, error };
-    this.state.update((state) => ({ ...state, maps: { apiKey: key.trim(), ...this.audit(actor) } }));
+    this.state.update((state) => ({ ...state, maps: { apiKey: key.trim(), ...this.stamp(actor) } }));
+    this.audit.record('Configuración', 'Llave de Google Maps', 'Conexiones', key.trim() ? `Llave propia …${key.trim().slice(-4)}` : 'Se usa la del despliegue', 'warning');
     return { ok: true };
   }
 
@@ -117,8 +123,9 @@ export class ConnectionsStore {
     if (error) return { ok: false, error };
     this.state.update((state) => ({
       ...state,
-      whatsapp: { countryCode: countryCode.trim(), ...this.audit(actor) },
+      whatsapp: { countryCode: countryCode.trim(), ...this.stamp(actor) },
     }));
+    this.audit.record('Configuración', 'WhatsApp', 'Conexiones', `Lada +${countryCode.trim()}`);
     return { ok: true };
   }
 
@@ -147,8 +154,9 @@ export class ConnectionsStore {
       return { ok: false, error: 'Revisa los campos marcados.' };
     this.state.update((state) => ({
       ...state,
-      payments: { ...state.payments, ...clean, ...this.secretMark(newSecret, state.payments), ...this.audit(actor) },
+      payments: { ...state.payments, ...clean, ...this.secretMark(newSecret, state.payments), ...this.stamp(actor) },
     }));
+    this.audit.record('Configuración', 'Pagos en línea', 'Conexiones', `${clean.provider} · ${clean.mode} · ${clean.enabled ? 'activo' : 'inactivo'}${newSecret ? ' · llave privada nueva' : ''}`, clean.mode === 'production' ? 'warning' : 'info');
     return { ok: true };
   }
 
@@ -172,8 +180,9 @@ export class ConnectionsStore {
       return { ok: false, error: 'Revisa los campos marcados.' };
     this.state.update((state) => ({
       ...state,
-      cfdi: { ...state.cfdi, ...clean, ...this.secretMark(newSecret, state.cfdi), ...this.audit(actor) },
+      cfdi: { ...state.cfdi, ...clean, ...this.secretMark(newSecret, state.cfdi), ...this.stamp(actor) },
     }));
+    this.audit.record('Configuración', 'Timbrado CFDI', 'Conexiones', `${clean.provider} · ${clean.mode} · ${clean.enabled ? 'activo' : 'inactivo'}`, clean.mode === 'production' ? 'warning' : 'info');
     return { ok: true };
   }
 
@@ -192,8 +201,9 @@ export class ConnectionsStore {
   disconnect(key: 'payments' | 'cfdi', actor: string): void {
     this.state.update((state) => ({
       ...state,
-      [key]: { ...state[key], enabled: false, secretTail: '', secretSetAt: '', ...this.audit(actor) },
+      [key]: { ...state[key], enabled: false, secretTail: '', secretSetAt: '', ...this.stamp(actor) },
     }));
+    this.audit.record('Configuración', 'Conexión desconectada', key === 'payments' ? 'Pagos en línea' : 'Timbrado CFDI', 'Se olvidó la llave registrada', 'critical');
   }
 
   // ─────────────────────────────────────────────────────── Servidor (API)
@@ -219,6 +229,14 @@ export class ConnectionsStore {
 
   // ─────────────────────────────────────────────────────────────── Interno
 
+  /** Con routers reales y sin servidor, las acciones quedan como comandos para ejecutar a mano. */
+  private mikrotikStatus(): ConnectionStatus {
+    const routers = this.mikrotik.activeRouters();
+    if (!routers.length) return 'disabled';
+    if (routers.every((router) => router.simulated)) return 'demo';
+    return this.apiBaseUrl ? 'active' : 'pending-server';
+  }
+
   private integrationStatus(enabled: boolean, errors: ConnectionErrors): ConnectionStatus {
     if (!enabled) return 'disabled';
     if (Object.keys(errors).length) return 'incomplete';
@@ -232,7 +250,7 @@ export class ConnectionsStore {
       : { secretTail: current.secretTail, secretSetAt: current.secretSetAt };
   }
 
-  private audit(actor: string) {
+  private stamp(actor: string) {
     return { updatedAt: new Date().toISOString(), updatedBy: actor };
   }
 

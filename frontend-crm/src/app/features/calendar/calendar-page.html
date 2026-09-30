@@ -172,6 +172,12 @@
             </div>
           </dl>
         </div>
+        <div class="event-whatsapp">
+          <app-whatsapp-menu module="calendar" [record]="event" />
+          @if (canSendToTechnician(event)) {
+            <button type="button" class="event-tech" (click)="sendLocationToTechnician(event)">📍 Enviar ubicación al técnico</button>
+          }
+        </div>
         <footer>
           <button type="button" (click)="selectedEvent.set(null)">Cerrar</button
           ><button type="button" (click)="selectedEvent.set(null); editingEventId.set(event.id); draft.set({type: event.type, title: event.title, client: event.client, assignedTo: event.assignedTo, startsAt: event.startsAt, endsAt: event.endsAt, description: event.description}); createOpen.set(true)">

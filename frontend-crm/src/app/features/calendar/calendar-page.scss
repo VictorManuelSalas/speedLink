@@ -567,3 +567,22 @@
     grid-column: auto;
   }
 }
+
+.event-whatsapp {
+  padding: 0 22px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.event-tech {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}

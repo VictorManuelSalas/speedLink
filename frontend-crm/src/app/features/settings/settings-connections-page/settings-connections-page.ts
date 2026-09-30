@@ -17,6 +17,8 @@ import {
   whatsappNumber,
 } from '../../../core/connections/connections.model';
 import { TAX_REGIMES, currentOrganization } from '../../../core/organization/organization.model';
+import { MikrotikStore } from '../../../core/network/mikrotik.store';
+import { CustomConnectionsSection } from './custom-connections-section';
 
 interface ConnectionCard {
   readonly key: ConnectionKey;
@@ -53,7 +55,7 @@ const STATUS_TONE: Readonly<Record<ConnectionStatus, string>> = {
 
 @Component({
   selector: 'app-settings-connections-page',
-  imports: [DatePipe, FormsModule, RouterLink],
+  imports: [DatePipe, FormsModule, RouterLink, CustomConnectionsSection],
   templateUrl: './settings-connections-page.html',
   styleUrls: [
     '../settings-pages.scss',
@@ -64,6 +66,7 @@ const STATUS_TONE: Readonly<Record<ConnectionStatus, string>> = {
 })
 export class SettingsConnectionsPage {
   readonly store = inject(ConnectionsStore);
+  private readonly mikrotik = inject(MikrotikStore);
   private readonly session = inject(SessionContext);
   readonly paymentProviders = PAYMENT_PROVIDERS;
   readonly cfdiProviders = CFDI_PROVIDERS;
@@ -74,7 +77,24 @@ export class SettingsConnectionsPage {
     const state = this.store.state();
     const payments = PAYMENT_PROVIDERS.find((item) => item.value === state.payments.provider);
     const cfdi = CFDI_PROVIDERS.find((item) => item.value === state.cfdi.provider);
+    const routers = this.mikrotik.activeRouters();
     return [
+      {
+        name: 'Red',
+        cards: [
+          {
+            key: 'mikrotik',
+            name: 'MikroTik',
+            provider: routers.length
+              ? `${routers.length} router(s) · ${this.mikrotik.subscriberList().length} colas`
+              : 'Sin routers',
+            mark: 'MT',
+            tone: 'red',
+            description: 'Bloquea y desbloquea el internet, ajusta la velocidad al plan y mide el consumo.',
+            usedIn: ['Ficha del cliente › Red', 'Red MikroTik', 'Tickets', 'Portal de clientes'],
+          },
+        ],
+      },
       {
         name: 'Plataforma',
         cards: [
@@ -229,6 +249,14 @@ export class SettingsConnectionsPage {
         return status === 'active' ? 'Mapa real con satélite.' : 'Sin llave: se muestra un mapa esquemático.';
       case 'whatsapp':
         return 'No requiere cuenta.';
+      case 'mikrotik':
+        return status === 'demo'
+          ? 'Router de demostración: acciones simuladas.'
+          : status === 'pending-server'
+            ? 'Sin servidor: cada acción deja el comando para ejecutarlo.'
+            : status === 'active'
+              ? 'Operando.'
+              : 'Agrega un router para activar las acciones de red.';
       default:
         return status === 'pending-server'
           ? key === 'payments'

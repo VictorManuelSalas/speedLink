@@ -1,5 +1,5 @@
 import { CurrencyPipe, DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, HostListener, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { switchMap } from 'rxjs';
 import { CRM_DATA } from '../../../core/data-access/crm-data';
@@ -19,6 +19,12 @@ import {
 import { AttachmentPicker } from '../../../shared/attachment-picker';
 import { FileItem } from '../../../shared/file-item';
 import { ModulesStore } from '../../../core/modules/modules-store';
+import { SessionContext } from '../../../core/auth/session-context';
+import { MikrotikStore } from '../../../core/network/mikrotik.store';
+import { speedLabel, trafficNow } from '../../../core/network/mikrotik.model';
+import { CustomerNetwork } from '../../network/customer-network/customer-network';
+import { WhatsappMenu } from '../../../shared/whatsapp-menu';
+import { RecordRelations } from '../../operations/record-sections/record-relations';
 import { CustomFieldsCard } from '../../operations/record-sections/custom-fields-card';
 import {
   RecordDetailLayout,
@@ -89,6 +95,8 @@ interface SubscribedContractService {
     AttachmentPicker,
     FileItem,
     CustomFieldsCard,
+    CustomerNetwork,
+    WhatsappMenu,
     RecordEventsSection,
     RecordField,
     RecordActivitySection,
@@ -121,6 +129,14 @@ export class CustomerDetailPage {
   private readonly portal = inject(ClientPortalStore);
   private readonly portalAccess = inject(PortalAccessStore);
   private readonly modules = inject(ModulesStore);
+  private readonly session = inject(SessionContext);
+  readonly network = inject(MikrotikStore);
+  private readonly relations = inject(RecordRelations);
+  /** La pestaña Red sólo existe con un router MikroTik activo y permiso para verla. */
+  readonly showNetwork = computed(() => this.network.connected() && this.session.hasPermission('network.read'));
+  readonly canBlockNetwork = computed(() => this.session.hasPermission('network.block'));
+  /** El botón del encabezado le pide a la pestaña Red que abra su diálogo. */
+  readonly networkIntent = signal<{ action: 'block' | 'unblock'; key: number } | null>(null);
   readonly customer = signal<Customer | undefined>(undefined);
   readonly inviteMenuOpen = signal(false);
   readonly portalDialog = signal<'disable' | 'enable' | 'regenerate' | null>(null);
@@ -153,17 +169,43 @@ export class CustomerDetailPage {
     email: 'andrea.torres@speedlink.mx',
     initials: 'AT',
   };
-  readonly tabs = [
-    'Resumen',
-    'Contratos',
-    'Facturación y pagos',
-    'Tickets',
-    'Correos',
-    'Eventos',
-    'Notas',
-    'Archivos',
-    'Actividad',
-  ];
+  get tabs(): string[] {
+    return [
+      'Resumen',
+      'Contratos',
+      'Facturación y pagos',
+      ...(this.showNetwork() ? ['Red'] : []),
+      'Tickets',
+      'Correos',
+      'Eventos',
+      'Notas',
+      'Archivos',
+      'Actividad',
+    ];
+  }
+  /** Estado del servicio en la cabecera: real si hay MikroTik; si no, el de su antena. */
+  serviceState(customer: Customer): { label: string; tone: string; detail: string } {
+    const sub = this.showNetwork() ? this.network.subscriber(customer.id) : undefined;
+    if (!sub) {
+      const online = customer.equipment.some((item) => item.status === 'online');
+      return { label: online ? '● En línea' : '● Sin señal', tone: online ? 'success' : 'danger-text', detail: customer.ipAddress };
+    }
+    const speed = this.network.appliedSpeed(sub);
+    const traffic = trafficNow(customer.id, speed, sub.blocked);
+    if (traffic.status === 'blocked') return { label: '● Bloqueado', tone: 'danger-text', detail: `${sub.blockReason} · ${sub.ip}` };
+    if (traffic.status === 'offline') return { label: '● Desconectado', tone: 'danger-text', detail: sub.ip };
+    return { label: '● En línea', tone: 'success', detail: `${sub.ip} · ${traffic.latencyMs} ms · ${speedLabel(speed)}` };
+  }
+  hasNetworkQueue(customer: Customer): boolean {
+    return this.showNetwork() && !!this.network.subscriber(customer.id);
+  }
+  isNetworkBlocked(customer: Customer): boolean {
+    return !!this.network.subscriber(customer.id)?.blocked;
+  }
+  requestNetwork(action: 'block' | 'unblock'): void {
+    this.activeTab.set('Red');
+    this.networkIntent.set({ action, key: Date.now() });
+  }
   customerContracts(customer: Customer) {
     return this.operationalStore
       .recordsFor('contracts')
@@ -237,7 +279,7 @@ export class CustomerDetailPage {
             : label === 'Notas'
               ? this.operationalStore.notesFor(customer.id).length
               : label === 'Actividad'
-                ? this.operationalStore.activityFor(customer.id).length
+                ? this.relations.activityCount('customers', customer.id)
                 : label === 'Correos'
                   ? this.operationalStore.emailsFor(customer.id).length
                   : label === 'Archivos'

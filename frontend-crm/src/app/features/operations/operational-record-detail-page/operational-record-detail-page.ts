@@ -62,6 +62,8 @@ import { moduleDefinition, moduleRoute } from '../module-registry';
 import { OrganizationStore } from '../../../core/organization/organization-store';
 import { computeTax } from '../../../core/organization/organization.model';
 import { whatsappLink } from '../../../core/connections/connections.model';
+import { WhatsappMenu } from '../../../shared/whatsapp-menu';
+import { RecordRelations } from '../record-sections/record-relations';
 import { FileViewer, downloadAttachment } from '../../../shared/file-viewer.service';
 
 type DetailTab = 'Resumen' | 'Acceso' | 'Correos' | 'Eventos' | 'Notas' | 'Actividad' | 'Archivos' | 'Contratos' | 'Asignaciones' | 'Relaciones' | 'Detalles' | 'Conciliación' | 'Comprobante' | 'Pagos';
@@ -109,6 +111,7 @@ const DERIVED_FIELDS: Readonly<Record<string, { label: string; type: ColumnType 
     EquipmentAccessSection,
     CurrencyPipe,
     DatePipe,
+    WhatsappMenu,
     DecimalPipe,
     FileUploadModal,
     InlineEditableDateField,
@@ -145,6 +148,7 @@ export class OperationalRecordDetailPage {
   private readonly deviceAccess = inject(DeviceAccessStore);
   private readonly pendingEmail = inject(PendingEmailService);
   private readonly templates = inject(TemplateStore);
+  private readonly relations = inject(RecordRelations);
   readonly i18n = inject(LanguageService);
   readonly moduleKey = (this.route.snapshot.data['moduleKey'] ??
     this.route.snapshot.paramMap.get('moduleKey')) as OperationalModuleKey;
@@ -214,7 +218,7 @@ export class OperationalRecordDetailPage {
         label === 'Notas'
           ? this.notes(id).length
           : label === 'Actividad'
-            ? this.activity(id).length
+            ? this.relations.activityCount(this.moduleKey, id)
             : label === 'Archivos'
               ? this.recordFiles(id).length
               : label === 'Correos'
@@ -562,10 +566,18 @@ export class OperationalRecordDetailPage {
     // Los campos personalizados se muestran aunque estén vacíos: si no, no
     // habría dónde capturarlos en registros creados antes de agregarlos.
     const customKeys = this.definition.fields.filter((field) => field.custom).map((field) => field.key);
-    return [...new Set([...Object.keys(record), ...customKeys])]
+    // Campos condicionados: aparecen (aunque vacíos) sólo si aplican al registro.
+    const conditional = this.definition.fields.filter((field) => field.showWhen);
+    const applies = (key: string) => {
+      const rule = conditional.find((field) => field.key === key)?.showWhen;
+      return !rule || String(record[rule.field] ?? '') === rule.equals;
+    };
+    const conditionalKeys = conditional.filter((field) => applies(field.key)).map((field) => field.key);
+    return [...new Set([...Object.keys(record), ...customKeys, ...conditionalKeys])]
       .filter(
         (key) =>
           key !== 'id' &&
+          applies(key) &&
           key !== 'updatedAt' &&
           !this.shadowIdKeys.has(key) &&
           // El conteo de contratos ya está en los widgets y tiene su pestaña.
@@ -836,20 +848,6 @@ export class OperationalRecordDetailPage {
       formatMoney: (value) => this.formatMoney(value),
       formatDate: (value) => this.formatDocumentDate(value),
     };
-  }
-  /** Mensaje de WhatsApp con el enlace al contrato. */
-  contractWhatsappUrl(record: OperationalRecord): string {
-    const customer = this.contractCustomer(record);
-    const phone = customer?.['phone'];
-    const template = this.templates.forFeature('tpl-contract-whatsapp', 'contracts', 'sms');
-    const rendered = template
-      ? this.templates.render(template, this.renderContext(record)).body
-      : `Contrato ${String(record['contractNumber'] ?? record.id)}`;
-    // El enlace apunta al CRM: el PDF no está alojado en ningún lado todavía.
-    const message = `${rendered}
-
-Consúltalo aquí: ${this.recordLink()}`;
-    return whatsappLink(phone, message);
   }
   /** Etiqueta de la acción de documento, o null si el módulo no tiene uno. */
   documentActionLabel(): string | null {

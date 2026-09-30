@@ -10,9 +10,23 @@ import {
 } from './operational-modules.data';
 import { moduleDefinition } from './module-registry';
 import { isCustomModuleKey } from '../../core/modules/custom-modules.model';
+import { SessionContext } from '../../core/auth/session-context';
+import { AuditLog } from '../../core/audit/audit-log';
+import { WebhookEvent, emitWebhookEvent } from '../../core/integrations/webhook-events';
+
+/** Módulo → evento de creación que se notifica por webhook. */
+const CREATED_EVENT: Partial<Record<string, WebhookEvent>> = {
+  customers: 'customer.created',
+  contracts: 'contract.created',
+  invoices: 'invoice.created',
+  payments: 'payment.created',
+};
 
 /** Los datos de demo de los nativos viven en memoria; lo creado por el usuario, no. */
 const CUSTOM_RECORDS_KEY = 'speedlink-custom-module-records';
+const ACTIVITY_KEY = 'speedlink-activity';
+/** Eventos que se conservan por registro (los más recientes). */
+const MAX_ACTIVITY_PER_RECORD = 150;
 
 function readCustomRecords(): Record<string, ReadonlyArray<OperationalRecord>> {
   try {
@@ -55,6 +69,15 @@ export interface OperationalActivity {
   tone: 'blue' | 'green' | 'amber' | 'violet';
   module: string;
   actionType: 'CREATE' | 'EDIT' | 'DELETE';
+  /** Envíos por WhatsApp: el texto que se mandó y a qué número. */
+  channel?: 'whatsapp';
+  message?: string;
+  phone?: string;
+}
+
+/** Evento con el registro al que pertenece (para vistas globales como Auditoría). */
+export interface ActivityEntry extends OperationalActivity {
+  recordId: string;
 }
 
 export interface OperationalEmail {
@@ -84,7 +107,17 @@ export class OperationalStore {
     ...readCustomRecords(),
   });
 
+  /** Ya se cargaron los datos operativos (demo o API): antes, los catálogos son provisionales. */
+  readonly dataReady = signal(false);
+
   constructor() {
+    effect(() => {
+      try {
+        localStorage.setItem(ACTIVITY_KEY, JSON.stringify(this.activity()));
+      } catch {
+        // Sin almacenamiento el historial dura sólo esta sesión.
+      }
+    });
     effect(() => {
       const custom = Object.fromEntries(
         Object.entries(this.records()).filter(([key]) => isCustomModuleKey(key)),
@@ -97,8 +130,11 @@ export class OperationalStore {
     });
   }
   private readonly deviceAccess = inject(DeviceAccessStore);
+  private readonly session = inject(SessionContext);
+  private readonly audit = inject(AuditLog);
   readonly notes = signal<Readonly<Record<string, ReadonlyArray<OperationalNote>>>>({});
-  readonly activity = signal<Readonly<Record<string, ReadonlyArray<OperationalActivity>>>>({});
+  /** Historial por registro; se guarda para que envíos y cambios no se pierdan al recargar. */
+  readonly activity = signal<Readonly<Record<string, ReadonlyArray<OperationalActivity>>>>(readActivity());
   readonly recordAttachments = signal<Readonly<Record<string, ReadonlyArray<CrmAttachment>>>>({});
   readonly emails = signal<Readonly<Record<string, ReadonlyArray<OperationalEmail>>>>({});
 
@@ -112,6 +148,9 @@ export class OperationalStore {
 
   add(module: OperationalModuleKey, record: OperationalRecord): void {
     this.records.update((state) => ({ ...state, [module]: [record, ...(state[module] ?? [])] }));
+    const created = CREATED_EVENT[module];
+    if (created) emitWebhookEvent(created, record);
+    if (module === 'payments') this.notifyInvoicePaid(record);
     this.addActivity(
       record.id,
       'Registro creado',
@@ -124,6 +163,8 @@ export class OperationalStore {
 
   update(module: OperationalModuleKey, id: string, changes: Partial<OperationalRecord>): void {
     const previous = this.find(module, id);
+    if (module === 'invoices' && changes['status'] === 'PAID' && previous && previous['status'] !== 'PAID')
+      emitWebhookEvent('invoice.paid', { ...previous, ...changes });
     this.records.update((state) => ({
       ...state,
       [module]: (state[module] ?? []).map((record) =>
@@ -165,6 +206,10 @@ export class OperationalStore {
   }
 
   archive(module: OperationalModuleKey, id: string): void {
+    const record = this.find(module, id);
+    if (record) emitWebhookEvent('record.deleted', { module, id });
+    if (record)
+      this.audit.record('Datos', 'Registro eliminado', `${this.moduleLabel(module)} ${String(record['folio'] ?? record['name'] ?? id)}`, id, 'critical');
     this.records.update((state) => ({
       ...state,
       [module]: (state[module] ?? []).filter((record) => record.id !== id),
@@ -180,9 +225,24 @@ export class OperationalStore {
     this.notes.update((current) => ({ ...current, [id]: [...notes] }));
   }
 
+  /** Agrega el historial de ejemplo sin duplicar ni borrar lo que ya se registró. */
   hydrateActivity(id: string, events: ReadonlyArray<OperationalActivity>): void {
-    if (!events.length || (this.activity()[id]?.length ?? 0) > 0) return;
-    this.activity.update((current) => ({ ...current, [id]: [...events] }));
+    if (!events.length) return;
+    const current = this.activity()[id] ?? [];
+    const known = new Set(current.map((event) => event.id));
+    const missing = events.filter((event) => !known.has(event.id));
+    if (!missing.length) return;
+    this.activity.update((activity) => ({
+      ...activity,
+      [id]: [...current, ...missing].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    }));
+  }
+
+  /** Todo el historial del CRM, del más reciente al más antiguo. */
+  allActivity(): ActivityEntry[] {
+    return Object.entries(this.activity())
+      .flatMap(([recordId, events]) => events.map((event) => ({ ...event, recordId })))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   addNote(
@@ -375,20 +435,23 @@ export class OperationalStore {
     tone: OperationalActivity['tone'],
     module: string,
     actionType: OperationalActivity['actionType'],
+    extra: Pick<OperationalActivity, 'channel' | 'message' | 'phone'> = {},
   ): void {
     const item: OperationalActivity = {
-      id: `activity-${Date.now()}`,
+      id: `activity-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       title,
       detail,
-      actor: 'Andrea Torres',
+      // Quien hizo el cambio: el usuario con sesión, no un nombre fijo.
+      actor: this.session.user()?.name ?? 'Sistema',
       createdAt: new Date().toISOString(),
       tone,
       module,
       actionType,
+      ...extra,
     };
     this.activity.update((activity) => ({
       ...activity,
-      [id]: [item, ...(activity[id] ?? [])],
+      [id]: [item, ...(activity[id] ?? [])].slice(0, MAX_ACTIVITY_PER_RECORD),
     }));
   }
 
@@ -403,6 +466,17 @@ export class OperationalStore {
     this.logActivity(id, title, detail, tone, module, actionType);
   }
 
+  /** Un pago que deja la factura sin saldo la notifica como pagada. */
+  private notifyInvoicePaid(payment: OperationalRecord): void {
+    const key = String(payment['invoiceId'] ?? payment['invoice'] ?? '');
+    const invoice = this.find('invoices', key) ?? this.recordsFor('invoices').find((item) => item['folio'] === key);
+    if (!invoice || invoice['status'] === 'PAID') return;
+    const paid = this.recordsFor('payments')
+      .filter((item) => item['invoiceId'] === invoice.id || item['invoice'] === invoice.id || (!!invoice['folio'] && item['invoice'] === invoice['folio']))
+      .reduce((sum, item) => sum + (Number(item['amount']) || 0), 0);
+    if (paid >= (Number(invoice['total']) || 0)) emitWebhookEvent('invoice.paid', { ...invoice, paidAmount: paid });
+  }
+
   /** Borra todos los registros de un módulo personalizado que se elimina. */
   clearModule(module: OperationalModuleKey): void {
     this.records.update((state) => {
@@ -413,5 +487,14 @@ export class OperationalStore {
 
   private moduleLabel(module: OperationalModuleKey): string {
     return moduleDefinition(module)?.title ?? module;
+  }
+}
+
+function readActivity(): Record<string, ReadonlyArray<OperationalActivity>> {
+  try {
+    const stored = JSON.parse(localStorage.getItem(ACTIVITY_KEY) ?? 'null');
+    return stored && typeof stored === 'object' ? stored : {};
+  } catch {
+    return {};
   }
 }

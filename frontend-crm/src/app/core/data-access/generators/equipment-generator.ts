@@ -80,7 +80,7 @@ export class EquipmentGenerator extends BaseGenerator<EquipmentRecord> {
         serialNumber: FakerHelpers.randomSerialNumber(),
         macAddress: IdGenerator.generateMacAddress(),
         status,
-        purchaseCost: type.cost + Math.floor(Math.random() * 500),
+        purchaseCost: type.cost + FakerHelpers.randomInt(0, 499),
         purchaseDate: purchaseDate,
         assignedToId: assignedToId,
         // Etiqueta del cliente, para no tener que resolver el id en cada vista.
@@ -103,7 +103,7 @@ export class EquipmentGenerator extends BaseGenerator<EquipmentRecord> {
       const record = this.generate(i);
 
       // Assign 60% of equipment
-      if (Math.random() < 0.6) {
+      if (FakerHelpers.chance(0.6)) {
         record.status = 'ASSIGNED';
         record.assignedToId = customerIds[i % customerIds.length];
         record.assignedTo = LookupMapper.getCustomerName(record.assignedToId);

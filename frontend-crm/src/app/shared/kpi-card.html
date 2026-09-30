@@ -1,7 +1,7 @@
 <article class="card kpi">
   <div class="kpi__top">
     <span class="kpi__icon kpi__icon--{{ tone() }}"><img [src]="icon()" alt="" /></span
-    ><span class="trend">{{ trend() }}</span>
+    >@if (trend()) {<span class="trend">{{ trend() }}</span>}
   </div>
   <p>{{ label() }}</p>
   <strong>

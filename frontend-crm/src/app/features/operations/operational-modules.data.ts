@@ -44,6 +44,8 @@ export interface ModuleField {
   /** Campo personalizado agregado desde Ajustes > Módulos. */
   custom?: boolean;
   helpText?: string;
+  /** Sólo aplica cuando otro campo tiene cierto valor (p. ej. velocidad si el tipo es Internet). */
+  showWhen?: { readonly field: string; readonly equals: string };
 }
 
 export interface OperationalModuleDefinition {
@@ -186,6 +188,7 @@ export const OPERATIONAL_MODULES: Readonly<
     columns: [
       { key: 'name', label: 'Servicio', type: 'identity' },
       { key: 'type', label: 'Tipo', type: 'text' },
+      { key: 'downloadMbps', label: 'Bajada (Mbps)', type: 'text' },
       { key: 'price', label: 'Precio', type: 'money' },
       { key: 'contracts', label: 'Contratos', type: 'text' },
       { key: 'status', label: 'Estado', type: 'status' },
@@ -199,6 +202,25 @@ export const OPERATIONAL_MODULES: Readonly<
         label: 'Tipo',
         type: 'select',
         options: ['Internet', 'Streaming', 'Complemento'],
+      },
+      // Velocidad del plan: con MikroTik conectado se vuelve su perfil de velocidad.
+      {
+        key: 'downloadMbps',
+        label: 'Bajada (Mbps)',
+        type: 'number',
+        min: 0.1,
+        max: 10000,
+        showWhen: { field: 'type', equals: 'Internet' },
+        helpText: 'Crea o actualiza el perfil de velocidad en MikroTik.',
+      },
+      {
+        key: 'uploadMbps',
+        label: 'Subida (Mbps)',
+        type: 'number',
+        min: 0.1,
+        max: 10000,
+        showWhen: { field: 'type', equals: 'Internet' },
+        helpText: 'Si la dejas vacía se usa 1/5 de la bajada.',
       },
       { key: 'status', label: 'Estado', type: 'select', options: ['ACTIVE', 'INACTIVE', 'ARCHIVED'] },
     ],

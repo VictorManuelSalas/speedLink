@@ -18,6 +18,7 @@ import { customModules, isHiddenInMenu } from '../modules/custom-modules.model';
 import { LanguageService } from '../i18n/language.service';
 
 import { FilePreviewModal } from '../../shared/file-preview-modal';
+import { MikrotikStore } from '../network/mikrotik.store';
 interface NavItem {
   label: string;
   icon: string;
@@ -47,6 +48,7 @@ export class AppShell {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   readonly session = inject(SessionContext);
+  private readonly mikrotik = inject(MikrotikStore);
   readonly i18n = inject(LanguageService);
   @ViewChild('globalSearch') private globalSearch?: ElementRef<HTMLInputElement>;
   readonly collapsed = signal(false);
@@ -238,7 +240,11 @@ export class AppShell {
         ...group,
         items: group.items.filter(
           // Ocultar un nativo en Ajustes > Módulos sólo lo quita del menú; el permiso sigue igual.
-          (item) => this.canSee(item.route) && !isHiddenInMenu(item.route.split('/')[1] ?? ''),
+          (item) =>
+            this.canSee(item.route) &&
+            !isHiddenInMenu(item.route.split('/')[1] ?? '') &&
+            // MikroTik sólo aparece con un router conectado.
+            (item.route !== '/network' || this.mikrotik.connected()),
         ),
       }))
       .filter((group) => group.items.length),
@@ -271,6 +277,8 @@ export class AppShell {
         { label: 'Asignaciones', icon: '/icons/menu/fi-rr-reflect.svg', route: '/assignments' },
         { label: 'Servicios', icon: '/icons/menu/fi-rr-database.svg', route: '/services' },
         { label: 'Equipamiento', icon: '/icons/menu/fi-rr-subtitles.svg', route: '/equipment' },
+        { label: 'Existencias', icon: '/icons/menu/fi-rr-database.svg', route: '/inventory' },
+        { label: 'MikroTik', icon: '/icons/settings/fi-rr-clouds.svg', route: '/network' },
       ],
     },
     {
@@ -285,6 +293,7 @@ export class AppShell {
         { label: 'Gastos', icon: '/icons/menu/fi-rr-diploma.svg', route: '/expenses' },
         { label: 'Calendario', icon: '/icons/menu/fi-rr-calendar.svg', route: '/calendar' },
         { label: 'Tickets', icon: '/icons/settings/fi-rr-comments.svg', route: '/tickets' },
+        { label: 'Reportes', icon: '/icons/menu/fi-rr-diploma.svg', route: '/reports' },
       ],
     },
   ];
@@ -503,6 +512,7 @@ export class AppShell {
   }
   /** Permiso que exige cada ruta del menú; sin permiso, la entrada no se muestra. */
   private routePermission(route: string): Permission | null {
+    if (route === '/inventory') return 'equipment.read';
     if (route === '/settings/users') return 'users.read';
     if (route === '/settings/roles') return 'roles.read';
     if (route.startsWith('/settings')) return 'settings.read';

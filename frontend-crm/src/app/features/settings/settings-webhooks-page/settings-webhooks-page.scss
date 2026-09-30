@@ -1,0 +1,218 @@
+.wh-banner {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.settings-content-card + .settings-content-card {
+  margin-top: 16px;
+}
+.wh-row {
+  grid-template-columns: 36px minmax(0, 1fr) auto auto auto !important;
+  flex-wrap: wrap;
+}
+.wh-actions {
+  display: flex;
+  gap: 6px;
+
+  .button {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 11.5px;
+  }
+}
+.wh-danger {
+  color: #dc2626 !important;
+}
+.wh-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  button {
+    padding: 5px 11px;
+    border: 1px solid var(--color-border);
+    border-radius: 99px;
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 650;
+    cursor: pointer;
+  }
+  .is-on {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: #fff;
+  }
+}
+.wh-table-wrap {
+  position: relative;
+  overflow: auto;
+}
+.wh-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+
+  th {
+    padding: 9px 14px;
+    color: var(--color-text-secondary);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-align: left;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+  }
+  td {
+    padding: 10px 14px;
+    vertical-align: top;
+    border-bottom: 1px solid var(--color-border);
+  }
+  small {
+    display: block;
+    margin-top: 2px;
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+}
+.wh-when {
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+.wh-status {
+  padding: 3px 8px;
+  border-radius: 99px;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.wh-status--queued {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.wh-status--sent {
+  background: #ecfdf5;
+  color: #15803d;
+}
+.wh-status--failed {
+  background: #fef2f2;
+  color: #dc2626;
+}
+.wh-td-actions {
+  text-align: right;
+  white-space: nowrap;
+
+  button {
+    margin-left: 4px;
+    padding: 4px 9px;
+    border: 1px solid var(--color-border);
+    border-radius: 7px;
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+}
+.wh-empty {
+  padding: 26px !important;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+.wh-dialog {
+  width: min(620px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  form {
+    min-height: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+  }
+  form > footer {
+    margin: 0;
+    padding: 14px 22px;
+  }
+}
+.wh-preview {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+
+  code {
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--color-muted);
+    overflow-wrap: anywhere;
+  }
+}
+.wh-form-error {
+  margin: 0;
+  padding: 0 20px 12px;
+}
+.net-check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  color: var(--color-text-primary) !important;
+  font-size: 12.5px !important;
+}
+.wh-json {
+  min-height: 0;
+  padding: 18px 22px 22px;
+  overflow: auto;
+
+  pre {
+    margin: 0;
+    padding: 14px;
+    border-radius: 10px;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-size: 12px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+:host-context(.app-frame--dark) {
+  .wh-banner {
+    border-color: #1e3a8a;
+    background: #0f1b33;
+    color: #bfdbfe;
+  }
+  .wh-status--queued {
+    background: #172554;
+    color: #bfdbfe;
+  }
+  .wh-status--sent {
+    background: #052e16;
+    color: #86efac;
+  }
+  .wh-status--failed {
+    background: #2a1215;
+    color: #fca5a5;
+  }
+}
+@media (max-width: 900px) {
+  .wh-row {
+    grid-template-columns: 36px minmax(0, 1fr) !important;
+
+    > :nth-child(n + 3) {
+      grid-column: 2;
+    }
+  }
+}
+
+.settings-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}

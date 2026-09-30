@@ -11,6 +11,7 @@
         [subtitle]="item.id + ' · ' + item.clientName + ' · ' + item.category"
       >
         <div record-actions>
+          <app-whatsapp-menu module="tickets" [record]="item" />
           <div class="share-menu">
             <button
               class="button"
@@ -283,6 +284,8 @@
         </div>
 
         <div record-aside>
+          <!-- Estado de la red del cliente: Soporte ve si tiene internet sin salir del ticket. -->
+          <app-customer-network [customerId]="item.clientId" [customerName]="item.clientName" [compact]="true" />
           <article class="card client-card">
             <header>
               <h2>{{ i18n.t('Información del cliente') }}</h2>

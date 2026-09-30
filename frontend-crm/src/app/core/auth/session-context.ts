@@ -1,4 +1,5 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { AuditLog, setAuditActor } from '../audit/audit-log';
+import { Injectable, effect, computed, inject, signal } from '@angular/core';
 import { AccessStore } from './access-store';
 import { AccessModuleKey, Permission } from './access.model';
 
@@ -56,8 +57,10 @@ const HOME_ROUTES: ReadonlyArray<[AccessModuleKey, string]> = [
 @Injectable({ providedIn: 'root' })
 export class SessionContext {
   private readonly access = inject(AccessStore);
+  private readonly audit = inject(AuditLog);
   private readonly session = signal<StoredSession | null>(this.restoreSession());
 
+  private readonly auditActor = effect(() => setAuditActor(this.user()?.name));
   readonly user = computed<SessionUser | null>(() => {
     const session = this.session();
     if (!session) return null;
@@ -94,15 +97,21 @@ export class SessionContext {
 
   async login(email: string, password: string, remember: boolean): Promise<LoginResult> {
     const result = await this.access.verifyCredentials(email, password);
-    if (!result.ok) return { success: false, message: result.error };
+    if (!result.ok) {
+      this.audit.record('Acceso', 'Intento de inicio fallido', email.trim().toLocaleLowerCase(), result.error, 'warning', 'Desconocido');
+      return { success: false, message: result.error };
+    }
     this.access.recordLogin(result.value.id);
     const session: StoredSession = { userId: result.value.id, organizationId: ORGANIZATION_ID };
     this.session.set(session);
     this.persist(session, remember);
+    this.audit.record('Acceso', 'Inicio de sesión', result.value.email, remember ? 'Recordar sesión en este equipo' : '', 'info', result.value.fullName);
     return { success: true };
   }
 
   logout(): void {
+    const user = this.user();
+    if (user) this.audit.record('Acceso', 'Cierre de sesión', user.email, '', 'info', user.name);
     localStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_KEY);
     this.session.set(null);

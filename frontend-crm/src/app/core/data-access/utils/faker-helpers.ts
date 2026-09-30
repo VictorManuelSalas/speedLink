@@ -186,6 +186,19 @@ export class FakerHelpers {
   // STATUSES & SELECTIONS
   // ========================================================================
 
+  /**
+   * Azar sembrado. Los generadores no deben usar Math.random(): si una rama
+   * depende de él y consume `rng`, la secuencia cambia en cada carga y los
+   * datos demo (contratos, estados, asignaciones) dejan de ser estables.
+   */
+  static chance(probability: number): boolean {
+    return this.rng() < probability;
+  }
+
+  static randomInt(min: number, max: number): number {
+    return min + Math.floor(this.rng() * (max - min + 1));
+  }
+
   static randomElement<T>(items: readonly T[]): T {
     return items[Math.floor(this.rng() * items.length)];
   }

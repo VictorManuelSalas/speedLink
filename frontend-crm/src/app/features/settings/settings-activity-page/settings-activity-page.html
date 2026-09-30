@@ -1,0 +1,103 @@
+<header class="settings-header settings-header--section">
+  <div>
+    <div class="breadcrumbs">
+      <a routerLink="/settings">Ajustes</a><b>›</b><span>Seguridad</span><b>›</b
+      ><span>{{ mode() === 'audit' ? 'Auditoría' : 'Actividad' }}</span>
+    </div>
+    <div class="settings-title">
+      <span class="settings-icon settings-icon--large"
+        ><img [src]="mode() === 'audit' ? '/icons/settings/fi-rr-bug.svg' : '/icons/menu/fi-rr-document.svg'" alt=""
+      /></span>
+      <div>
+        @if (mode() === 'audit') {
+          <h1>Auditoría</h1>
+          <p>Lo sensible: accesos, usuarios, roles y permisos, configuración, red y eliminaciones.</p>
+        } @else {
+          <h1>Registro de actividad</h1>
+          <p>Todo lo que pasa en el CRM: cambios en registros, envíos de WhatsApp, acciones de red y accesos.</p>
+        }
+      </div>
+    </div>
+  </div>
+  <button class="button" type="button" [disabled]="!filtered().length" (click)="export()">⇩ Exportar CSV</button>
+</header>
+
+<section class="settings-metrics">
+  <article class="settings-metric settings-metric--blue"><span>Eventos hoy</span><strong>{{ kpis().today }}</strong><small>Toda la organización</small></article>
+  <article class="settings-metric settings-metric--green"><span>Usuarios con actividad</span><strong>{{ kpis().users }}</strong><small>Últimos 30 días</small></article>
+  <article class="settings-metric settings-metric--amber"><span>Alertas</span><strong>{{ kpis().alerts }}</strong><small>Atención o críticas · 7 días</small></article>
+  @if (mode() === 'audit') {
+    <article class="settings-metric settings-metric--violet"><span>Inicios fallidos</span><strong>{{ kpis().failed }}</strong><small>Últimos 7 días</small></article>
+  }
+</section>
+
+<section class="settings-content-card">
+  <header class="settings-content-card__header act-filters">
+    <label class="settings-search"
+      ><span>⌕</span
+      ><input type="search" placeholder="Buscar acción, registro o detalle…" [value]="query()" (input)="query.set($any($event.target).value)"
+    /></label>
+    <select aria-label="Usuario" [value]="actor()" (change)="actor.set($any($event.target).value)">
+      <option value="">Todos los usuarios</option>
+      @for (item of actors(); track item) {
+        <option [value]="item">{{ item }}</option>
+      }
+    </select>
+    <select aria-label="Categoría" [value]="category()" (change)="category.set($any($event.target).value)">
+      <option value="">Todas las categorías</option>
+      @for (item of categories(); track item) {
+        <option [value]="item">{{ item }}</option>
+      }
+    </select>
+    <select aria-label="Nivel" [value]="severity()" (change)="severity.set($any($event.target).value)">
+      <option value="">Todos los niveles</option>
+      <option value="info">Info</option>
+      <option value="warning">Atención</option>
+      <option value="critical">Crítico</option>
+    </select>
+    <label class="act-date"><span>Desde</span><input type="date" [value]="from()" (change)="from.set($any($event.target).value)" /></label>
+    <label class="act-date"><span>Hasta</span><input type="date" [value]="to()" (change)="to.set($any($event.target).value)" /></label>
+    <button class="button" type="button" (click)="clear()">Limpiar</button>
+  </header>
+
+  <p class="act-count">{{ filtered().length }} evento(s){{ filtered().length > visible().length ? ' · mostrando ' + visible().length : '' }}</p>
+
+  <div class="act-table-wrap">
+    <table class="act-table">
+      <thead>
+        <tr><th>Fecha</th><th>Usuario</th><th>Categoría</th><th>Acción</th><th>Registro</th><th>Nivel</th></tr>
+      </thead>
+      <tbody>
+        @for (row of visible(); track row.id) {
+          <tr>
+            <td class="act-when">{{ row.at | date: 'dd MMM y, HH:mm' }}</td>
+            <td>{{ row.actor }}</td>
+            <td><span class="act-cat">{{ row.category }}</span></td>
+            <td>
+              <b>{{ row.action }}</b>
+              @if (row.detail) {
+                <small>{{ row.detail }}</small>
+              }
+              @if (row.message) {
+                <details class="act-message"><summary>Mensaje de WhatsApp</summary><p>{{ row.message }}</p></details>
+              }
+            </td>
+            <td>
+              @if (row.route) {
+                <a [routerLink]="row.route">{{ row.target }}</a>
+              } @else {
+                {{ row.target }}
+              }
+            </td>
+            <td><span class="act-sev act-sev--{{ row.severity }}">{{ severityLabel(row.severity) }}</span></td>
+          </tr>
+        } @empty {
+          <tr><td colspan="6" class="act-empty">Sin eventos con estos filtros.</td></tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  @if (filtered().length > visible().length) {
+    <div class="act-more"><button class="button" type="button" (click)="limit.set(limit() + 100)">Ver 100 más</button></div>
+  }
+</section>

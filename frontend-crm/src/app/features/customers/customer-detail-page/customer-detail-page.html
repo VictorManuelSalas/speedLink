@@ -109,6 +109,14 @@
               </div>
             }
           </div>
+          <app-whatsapp-menu module="customers" [record]="templateRecord(c)" />
+          @if (hasNetworkQueue(c) && canBlockNetwork()) {
+            @if (isNetworkBlocked(c)) {
+              <button class="button" type="button" (click)="requestNetwork('unblock')">⏻ Desbloquear internet</button>
+            } @else {
+              <button class="button" type="button" (click)="requestNetwork('block')">⏻ Bloquear internet</button>
+            }
+          }
           <button class="button" (click)="composeMessage()">✉ Enviar mensaje</button
           ><button class="button button--primary" (click)="registerPayment(c)">
             ＋ Registrar pago
@@ -198,8 +206,8 @@
           ><small>Próximo cobro: día {{ c.billingDay }}</small>
         </div>
         <div class="record-summary-item">
-          <span>Estado del servicio</span><b class="success">● En línea</b
-          ><small>{{ c.ipAddress }} · 18 ms</small>
+          <span>Estado del servicio</span><b [class]="serviceState(c).tone">{{ serviceState(c).label }}</b
+          ><small>{{ serviceState(c).detail }}</small>
         </div>
         <div class="record-summary-item">
           <span>Facturas pagadas</span><b>{{ c.payments.length }}</b
@@ -225,9 +233,16 @@
       } @else if (activeTab() === 'Archivos') {
         <app-record-attachments-section [recordId]="c.id" />
       } @else if (activeTab() === 'Actividad') {
-        <app-record-activity-section [recordId]="c.id" />
+        <app-record-activity-section [recordId]="c.id" moduleKey="customers" />
       } @else if (activeTab() === 'Eventos') {
         <app-record-events-section recordType="customer" [recordId]="c.id" [recordName]="c.name" />
+      } @else if (activeTab() === 'Red' && showNetwork()) {
+        <app-customer-network
+          [customerId]="c.id"
+          [customerName]="c.name"
+          [defaultIp]="c.ipAddress"
+          [intent]="networkIntent()"
+        />
       } @else if (activeTab() === 'Contratos') {
         <section class="customer-contracts">
           <header>

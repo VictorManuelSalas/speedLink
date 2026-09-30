@@ -33,6 +33,13 @@ export const routes: Routes = [
     data: { title: 'Sin permisos', message: 'Tu cuenta no tiene acceso a esta sección.' },
   },
   {
+    // Enlace de descarga que se manda por WhatsApp: público, validado por token.
+    path: 'd/:kind/:id',
+    title: 'Documento | SpeedLink',
+    loadComponent: () =>
+      import('./features/public/shared-document-page/shared-document-page').then((m) => m.SharedDocumentPage),
+  },
+  {
     path: 'portal/:slug',
     title: 'Portal de clientes | SpeedLink',
     loadComponent: () =>
@@ -251,6 +258,56 @@ export const routes: Routes = [
             (m) => m.SettingsTemplatesPage,
           ),
       },
+      ...(
+        [
+          ['activity', 'Registro de actividad'],
+          ['audit', 'Auditoría'],
+        ] as const
+      ).map(([section, title]) => ({
+        path: `settings/${section}`,
+        canActivate: [permissionGuard('settings.read')],
+        title: `${title} | SpeedLink CRM`,
+        loadComponent: () =>
+          import('./features/settings/settings-activity-page/settings-activity-page').then(
+            (m) => m.SettingsActivityPage,
+          ),
+        data: { section },
+      })),
+      {
+        path: 'settings/webhooks',
+        canActivate: [permissionGuard('settings.read')],
+        title: 'Webhooks | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/settings/settings-webhooks-page/settings-webhooks-page').then((m) => m.SettingsWebhooksPage),
+      },
+      {
+        path: 'inventory',
+        canActivate: [permissionGuard('equipment.read')],
+        title: 'Existencias | SpeedLink CRM',
+        loadComponent: () => import('./features/inventory/inventory-page').then((m) => m.InventoryPage),
+      },
+      {
+        path: 'reports',
+        canActivate: [permissionGuard('reports.read')],
+        title: 'Reportes | SpeedLink CRM',
+        loadComponent: () => import('./features/reports/reports-page').then((m) => m.ReportsPage),
+      },
+      {
+        path: 'network',
+        canActivate: [permissionGuard('network.read')],
+        title: 'Red MikroTik | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/network/network-page/network-page').then((m) => m.NetworkPage),
+      },
+      {
+        path: 'settings/connections/mikrotik',
+        canActivate: [permissionGuard('settings.read')],
+        title: 'MikroTik | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/settings/settings-mikrotik-page/settings-mikrotik-page').then(
+            (m) => m.SettingsMikrotikPage,
+          ),
+      },
       {
         path: 'settings/connections',
         canActivate: [permissionGuard('settings.read')],
@@ -264,11 +321,8 @@ export const routes: Routes = [
         [
           ['workflows', 'workflows', 'Flujos de trabajo'],
           ['schedules', 'schedules', 'Programaciones'],
-          ['activity', 'activity', 'Registro de actividad'],
-          ['audit', 'audit', 'Auditoría'],
           ['ip-restrictions', 'ip-restrictions', 'Restricciones IP'],
           ['2fa', '2fa', 'Autenticación 2FA'],
-          ['webhooks', 'webhooks', 'Webhooks'],
           ['apis', 'apis', 'Acceso API'],
         ] as const
       ).map(([path, section, title]) => ({

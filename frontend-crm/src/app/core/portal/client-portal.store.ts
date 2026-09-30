@@ -1,5 +1,9 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { TicketStore } from '../data-access/ticket-store';
+import { TicketStore, TicketRecord } from '../data-access/ticket-store';
+import { OperationalStore } from '../../features/operations/operational-store';
+import { ConnectionsStore } from '../connections/connections-store';
+import { PAYMENT_PROVIDERS } from '../connections/connections.model';
+import { documentLink } from '../documents/shared-documents';
 import { PortalAccessStore } from './portal-access.store';
 
 export interface ClientPortalConfig {
@@ -49,11 +53,71 @@ export interface PortalTicket {
   id: string;
   subject: string;
   description: string;
-  status: 'Abierto' | 'En progreso' | 'Resuelto';
+  status: 'Abierto' | 'En progreso' | 'En espera' | 'Resuelto';
   priority: 'Baja' | 'Media' | 'Alta';
   createdAt: string;
   updatedAt: string;
+  category?: string;
+  /** Quién lo atiende (sin exponer datos internos del equipo). */
+  assignedTo?: string;
+  /** Respuestas públicas del equipo; las notas internas nunca llegan al portal. */
+  replies?: ReadonlyArray<{ id: string; author: string; message: string; createdAt: string }>;
+  /** Etapas del seguimiento: recibido → en atención → resuelto. */
+  steps?: ReadonlyArray<{ label: string; done: boolean; at?: string }>;
 }
+
+/** Tipos de falla que el cliente puede reportar y su categoría en el CRM. */
+export const PORTAL_FAULT_TYPES: ReadonlyArray<{ value: string; label: string; category: 'Conectividad' | 'Equipo' | 'Facturación' | 'Otro' }> = [
+  { value: 'sin-internet', label: 'No tengo internet', category: 'Conectividad' },
+  { value: 'lento', label: 'El internet está lento', category: 'Conectividad' },
+  { value: 'intermitente', label: 'Se corta a ratos', category: 'Conectividad' },
+  { value: 'equipo', label: 'Problema con mi módem o router', category: 'Equipo' },
+  { value: 'factura', label: 'Duda con mi factura o pago', category: 'Facturación' },
+  { value: 'otro', label: 'Otro', category: 'Otro' },
+];
+
+export interface PortalInvoice {
+  id: string;
+  folio: string;
+  description: string;
+  issuedAt: string;
+  dueAt: string;
+  amount: number;
+  balance: number;
+  status: 'Pagada' | 'Pendiente' | 'Vencida';
+  documentUrl: string;
+}
+
+export interface PortalPayment {
+  id: string;
+  date: string;
+  method: string;
+  reference: string;
+  amount: number;
+  status: string;
+  documentUrl: string;
+}
+
+const TICKET_STATUS: Readonly<Record<string, PortalTicket['status']>> = {
+  open: 'Abierto',
+  in_progress: 'En progreso',
+  waiting: 'En espera',
+  resolved: 'Resuelto',
+  closed: 'Resuelto',
+};
+const TICKET_PRIORITY: Readonly<Record<string, PortalTicket['priority']>> = {
+  low: 'Baja',
+  medium: 'Media',
+  high: 'Alta',
+  urgent: 'Alta',
+};
+const PAYMENT_METHOD: Readonly<Record<string, string>> = {
+  CASH: 'Efectivo',
+  BANK_TRANSFER: 'Transferencia',
+  CREDIT_CARD: 'Tarjeta',
+  DEBIT_CARD: 'Tarjeta de débito',
+  OTHER: 'Otro',
+};
 
 export interface PortalAttachment {
   id: string;
@@ -68,7 +132,6 @@ export interface PortalAttachment {
 
 const CONFIG_KEY = 'speedlink-client-portal-config';
 const PROFILE_KEY = 'speedlink-client-portal-profile';
-const TICKETS_KEY = 'speedlink-client-portal-tickets';
 const ATTACHMENTS_KEY = 'speedlink-client-portal-attachments';
 
 const DEFAULT_CONFIG: ClientPortalConfig = {
@@ -104,81 +167,88 @@ const DEFAULT_PROFILE: PortalProfile = {
   nextBillingDate: '2026-08-15',
 };
 
-const DEFAULT_TICKETS: PortalTicket[] = [
-  {
-    id: 'TK-2290',
-    subject: 'Intermitencia y pérdida de paquetes',
-    description: 'Se presentan cortes breves durante videollamadas.',
-    status: 'En progreso',
-    priority: 'Alta',
-    createdAt: '2026-07-14T09:41:00-06:00',
-    updatedAt: '2026-07-18T11:20:00-06:00',
-  },
-  {
-    id: 'TK-2184',
-    subject: 'Validar configuración de IP estática',
-    description: 'Confirmar gateway, máscara y DNS del router.',
-    status: 'Abierto',
-    priority: 'Media',
-    createdAt: '2026-06-28T10:15:00-06:00',
-    updatedAt: '2026-06-28T13:32:00-06:00',
-  },
-];
 
 @Injectable({ providedIn: 'root' })
 export class ClientPortalStore {
   private readonly crmTickets = inject(TicketStore);
   private readonly access = inject(PortalAccessStore);
+  private readonly ops = inject(OperationalStore);
+  private readonly connections = inject(ConnectionsStore);
   readonly config = signal(this.read<ClientPortalConfig>(CONFIG_KEY, DEFAULT_CONFIG));
   readonly profile = signal(this.read<PortalProfile>(PROFILE_KEY, DEFAULT_PROFILE));
-  readonly tickets = signal(this.read<PortalTicket[]>(TICKETS_KEY, DEFAULT_TICKETS));
+  /** Los tickets del cliente en el CRM, con su estado y respuestas reales. */
+  readonly tickets = computed<PortalTicket[]>(() =>
+    this.crmTickets
+      .forClient(this.profile().id)
+      .filter((ticket) => !ticket.deletedAt)
+      .map((ticket) => this.toPortalTicket(ticket))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+  );
   readonly authenticated = signal(
     sessionStorage.getItem('speedlink-client-portal-session') === 'active',
   );
-  readonly invoices = signal([
-    {
-      id: 'INV-4485',
-      description: 'Servicio de internet · Julio 2026',
-      issuedAt: '2026-07-01',
-      dueAt: '2026-07-10',
-      amount: 300,
-      status: 'Pagada',
-    },
-    {
-      id: 'INV-4412',
-      description: 'Servicio de internet · Junio 2026',
-      issuedAt: '2026-06-01',
-      dueAt: '2026-06-10',
-      amount: 300,
-      status: 'Pagada',
-    },
-    {
-      id: 'INV-4520',
-      description: 'Servicio de internet · Agosto 2026',
-      issuedAt: '2026-08-01',
-      dueAt: '2026-08-15',
-      amount: 300,
-      status: 'Pendiente',
-    },
-  ]);
-  readonly payments = signal([
-    {
-      id: 'PAY-74021',
-      date: '2026-07-08',
-      method: 'Transferencia bancaria',
-      reference: 'ACH-4421A',
-      amount: 300,
-      status: 'Aplicado',
-    },
-    {
-      id: 'PAY-73108',
-      date: '2026-06-07',
-      method: 'Tarjeta',
-      reference: 'VISA-4291',
-      amount: 300,
-      status: 'Aplicado',
-    },
-  ]);
+  /** Facturas del cliente en el CRM, con su saldo y enlace de descarga. */
+  readonly invoices = computed<PortalInvoice[]>(() => {
+    const clientId = this.profile().id;
+    const payments = this.ops.recordsFor('payments');
+    return this.ops
+      .recordsFor('invoices')
+      .filter((invoice) => invoice['clientId'] === clientId && invoice['status'] !== 'CANCELLED' && invoice['status'] !== 'DRAFT')
+      .map((invoice) => {
+        const paid = payments
+          .filter((payment) => payment['invoiceId'] === invoice.id || payment['invoice'] === invoice.id || (!!invoice['folio'] && payment['invoice'] === invoice['folio']))
+          .reduce((sum, payment) => sum + (Number(payment['amount']) || 0), 0);
+        const total = Number(invoice['total']) || 0;
+        const balance = invoice['status'] === 'PAID' ? 0 : Math.max(0, total - paid);
+        const due = String(invoice['dueDate'] ?? '');
+        const overdue = balance > 0 && (invoice['status'] === 'OVERDUE' || (!!due && due.slice(0, 10) < new Date().toISOString().slice(0, 10)));
+        return {
+          id: invoice.id,
+          folio: String(invoice['folio'] ?? invoice.id),
+          description: String(invoice['description'] ?? 'Servicio de internet'),
+          issuedAt: String(invoice['issueDate'] ?? ''),
+          dueAt: due,
+          amount: total,
+          balance,
+          status: balance === 0 ? 'Pagada' : overdue ? 'Vencida' : 'Pendiente',
+          documentUrl: documentLink('invoice', invoice.id),
+        } satisfies PortalInvoice;
+      })
+      .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
+  });
+  readonly payments = computed<PortalPayment[]>(() =>
+    this.ops
+      .recordsFor('payments')
+      .filter((payment) => payment['clientId'] === this.profile().id)
+      .map((payment) => ({
+        id: payment.id,
+        date: String(payment['paidAt'] ?? ''),
+        method: PAYMENT_METHOD[String(payment['method'] ?? '')] ?? String(payment['method'] ?? ''),
+        reference: String(payment['reference'] ?? '—'),
+        amount: Number(payment['amount']) || 0,
+        status: 'Aplicado',
+        documentUrl: documentLink('payment', payment.id),
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date)),
+  );
+  readonly balanceDue = computed(() => this.invoices().reduce((sum, invoice) => sum + invoice.balance, 0));
+
+  /**
+   * Pago en línea: aparece si la conexión de pagos está configurada. En modo
+   * pruebas se simula un cobro aprobado (sin pedir datos de tarjeta); en
+   * producción el cobro real lo hará el servidor con el proveedor.
+   */
+  readonly onlinePayments = computed(() => {
+    const status = this.connections.statuses().payments;
+    if (status === 'disabled' || status === 'incomplete') return null;
+    const config = this.connections.state().payments;
+    return {
+      provider: PAYMENT_PROVIDERS.find((item) => item.value === config.provider)?.label ?? config.provider,
+      sandbox: config.mode === 'sandbox',
+      available: config.mode === 'sandbox' || status === 'active',
+    };
+  });
+
   readonly attachments = signal<PortalAttachment[]>(
     this.read<PortalAttachment[]>(ATTACHMENTS_KEY, [
       {
@@ -215,13 +285,6 @@ export class ClientPortalStore {
           this.profile.set({ ...DEFAULT_PROFILE, ...JSON.parse(event.newValue) });
         } catch {
           this.profile.set(DEFAULT_PROFILE);
-        }
-      }
-      if (event.key === TICKETS_KEY && event.newValue) {
-        try {
-          this.tickets.set(JSON.parse(event.newValue) as PortalTicket[]);
-        } catch {
-          this.tickets.set(DEFAULT_TICKETS);
         }
       }
     });
@@ -309,35 +372,28 @@ export class ClientPortalStore {
     subject: string,
     description: string,
     priority: PortalTicket['priority'],
+    faultType = 'otro',
   ): PortalTicket {
-    const ticket: PortalTicket = {
-      id: `TK-${2300 + this.tickets().length}`,
-      subject,
-      description,
-      priority,
-      status: 'Abierto',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    this.tickets.update((tickets) => [ticket, ...tickets]);
-    localStorage.setItem(TICKETS_KEY, JSON.stringify(this.tickets()));
     const profile = this.profile();
+    const fault = PORTAL_FAULT_TYPES.find((item) => item.value === faultType) ?? PORTAL_FAULT_TYPES[PORTAL_FAULT_TYPES.length - 1];
+    const now = new Date().toISOString();
+    const id = `TK-${2300 + this.crmTickets.tickets().length}`;
     this.crmTickets.add(
       {
-        id: ticket.id,
+        id,
         clientId: profile.id,
-        subject: ticket.subject,
-        description: ticket.description,
-        category: 'Otro',
-        priority:
-          ticket.priority === 'Alta' ? 'high' : ticket.priority === 'Baja' ? 'low' : 'medium',
+        subject,
+        description,
+        category: fault.category,
+        priority: priority === 'Alta' ? 'high' : priority === 'Baja' ? 'low' : 'medium',
         status: 'open',
         channel: 'Portal',
         assignedTo: 'Sin asignar',
         createdById: `client-${profile.id}`,
-        createdAt: ticket.createdAt,
-        updatedAt: ticket.updatedAt,
-        slaDueAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: now,
+        updatedAt: now,
+        // Sin internet es lo más urgente: 4 h; lo demás, 24 h.
+        slaDueAt: new Date(Date.now() + (fault.value === 'sin-internet' ? 4 : 24) * 3600_000).toISOString(),
         requester: profile.name,
         comments: [],
         attachments: [],
@@ -354,7 +410,85 @@ export class ClientPortalStore {
           .toLocaleUpperCase(),
       },
     );
-    return ticket;
+    return this.tickets().find((ticket) => ticket.id === id) ?? {
+      id,
+      subject,
+      description,
+      priority,
+      status: 'Abierto',
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  /** Respuesta del cliente a su ticket: llega al CRM como comentario público. */
+  replyToTicket(ticketId: string, message: string): void {
+    const profile = this.profile();
+    this.crmTickets.addComment(ticketId, {
+      id: `cm-${Date.now().toString(36)}`,
+      message: message.trim(),
+      author: { fullName: profile.name, email: profile.email, initials: profile.name.slice(0, 2).toUpperCase() },
+      isInternal: false,
+      createdAt: new Date().toISOString(),
+      attachments: [],
+    });
+  }
+
+  /**
+   * Cobro de una factura en línea. En modo pruebas se registra como pago con
+   * tarjeta aprobado; se ve en el CRM, dispara los webhooks y, si el cliente
+   * estaba cortado por adeudo, aparece en «Ya pagaron y siguen bloqueados».
+   */
+  payInvoice(invoiceId: string): { ok: true; reference: string } | { ok: false; error: string } {
+    const online = this.onlinePayments();
+    if (!online?.available) return { ok: false, error: 'El pago en línea aún no está disponible.' };
+    if (!online.sandbox) return { ok: false, error: 'El cobro real se activa cuando el CRM tenga servidor.' };
+    const invoice = this.invoices().find((item) => item.id === invoiceId);
+    if (!invoice || invoice.balance <= 0) return { ok: false, error: 'Esta factura ya no tiene saldo.' };
+    const profile = this.profile();
+    const reference = `SBX-${Date.now().toString(36).toUpperCase()}`;
+    const now = new Date().toISOString();
+    this.ops.add('payments', {
+      id: `PAY-${Date.now().toString(36).toUpperCase()}`,
+      clientId: profile.id,
+      client: profile.name,
+      invoiceId: invoice.id,
+      invoice: invoice.folio,
+      amount: invoice.balance,
+      method: 'CREDIT_CARD',
+      reference,
+      paidAt: now,
+      notes: `Pago en línea desde el portal (${online.provider}, modo pruebas)`,
+      createdAt: now,
+      updatedAt: now,
+    });
+    this.ops.update('invoices', invoice.id, { status: 'PAID' });
+    return { ok: true, reference };
+  }
+
+  private toPortalTicket(ticket: TicketRecord): PortalTicket {
+    const status = TICKET_STATUS[ticket.status] ?? 'Abierto';
+    const assigned = ticket.assignedTo && ticket.assignedTo !== 'Sin asignar' ? ticket.assignedTo : undefined;
+    const resolved = ticket.status === 'resolved' || ticket.status === 'closed';
+    return {
+      id: ticket.id,
+      subject: ticket.subject,
+      description: ticket.description,
+      status,
+      priority: TICKET_PRIORITY[ticket.priority] ?? 'Media',
+      createdAt: ticket.createdAt,
+      updatedAt: ticket.updatedAt,
+      category: ticket.category,
+      assignedTo: assigned,
+      replies: ticket.comments
+        .filter((comment) => !comment.isInternal)
+        .map((comment) => ({ id: comment.id, author: comment.author.fullName, message: comment.message, createdAt: comment.createdAt })),
+      steps: [
+        { label: 'Recibimos tu reporte', done: true, at: ticket.createdAt },
+        { label: assigned ? `${assigned} lo está atendiendo` : 'Asignando a un técnico', done: !!assigned || ticket.status !== 'open' },
+        { label: 'Resuelto', done: resolved, at: ticket.resolvedAt },
+      ],
+    };
   }
 
   addFiles(files: FileList): void {

@@ -1,0 +1,220 @@
+<header class="settings-header settings-header--section">
+  <div>
+    <div class="breadcrumbs">
+      <a routerLink="/settings">Ajustes</a><b>›</b><span>Integraciones</span><b>›</b><span>Webhooks</span>
+    </div>
+    <div class="settings-title">
+      <span class="settings-icon settings-icon--large"><img src="/icons/settings/fi-rr-resize.svg" alt="" /></span>
+      <div>
+        <h1>Webhooks</h1>
+        <p>Avisa a otros sistemas (ERP, contabilidad, NOC) de lo que pasa en el CRM, en el momento en que pasa.</p>
+      </div>
+    </div>
+  </div>
+  @if (canEdit()) {
+    <button class="button button--primary" type="button" (click)="open()">＋ Nuevo webhook</button>
+  }
+</header>
+
+@if (!store.hasServer) {
+  <p class="wh-banner">
+    <b>Sin servidor, las entregas quedan en cola.</b> Cada evento genera su entrega con el JSON que se enviará; el servidor
+    las mandará con la llave guardada. «Enviar prueba» sí hace un POST real desde el navegador, sin credenciales.
+  </p>
+}
+
+<section class="settings-metrics">
+  <article class="settings-metric settings-metric--blue"><span>Webhooks activos</span><strong>{{ store.stats().active }}</strong><small>De {{ store.webhooks().length }}</small></article>
+  <article class="settings-metric settings-metric--violet"><span>En cola</span><strong>{{ store.stats().queued }}</strong><small>Esperando al servidor</small></article>
+  <article class="settings-metric settings-metric--green"><span>Últimas 24 h</span><strong>{{ store.stats().last24h }}</strong><small>Entregas generadas</small></article>
+  <article class="settings-metric settings-metric--amber"><span>Fallidas</span><strong>{{ store.stats().failed }}</strong><small>Últimas 24 h</small></article>
+</section>
+
+<section class="settings-content-card">
+  <header class="settings-content-card__header">
+    <div>
+      <h2>Webhooks</h2>
+      <p>Un evento del CRM → un endpoint. Usa una conexión personalizada para no repetir la URL base y la llave.</p>
+    </div>
+    <a class="button" routerLink="/settings/connections">Conexiones personalizadas ›</a>
+  </header>
+  <div class="settings-list">
+    @for (hook of store.webhooks(); track hook.id) {
+      <article class="settings-row wh-row">
+        <span class="settings-row__avatar">⇄</span>
+        <span class="settings-row__main"
+          ><b>{{ hook.name }}</b><small>{{ store.eventLabel(hook.event) }} → {{ store.urlOf(hook) }}</small></span
+        >
+        <span class="settings-row__meta">
+          @if (lastDelivery(hook); as last) {
+            Última: {{ statusLabel(last.status) }} · {{ last.at | date: 'dd MMM, HH:mm' }}
+          } @else {
+            Sin entregas
+          }
+        </span>
+        <label class="channel-switch"
+          ><input type="checkbox" [checked]="hook.enabled" [disabled]="!canEdit()" (change)="toggle(hook)" /><i></i
+          ><span>{{ hook.enabled ? 'Activo' : 'Pausado' }}</span></label
+        >
+        <div class="wh-actions">
+          <button type="button" class="button" [disabled]="testing() === hook.id" (click)="test(hook)">
+            {{ testing() === hook.id ? 'Enviando…' : 'Enviar prueba' }}
+          </button>
+          @if (canEdit()) {
+            <button type="button" class="button" (click)="open(hook)">Editar</button>
+            <button type="button" class="button wh-danger" (click)="removing.set(hook)">Eliminar</button>
+          }
+        </div>
+      </article>
+    } @empty {
+      <div class="settings-empty">
+        <span>⇄</span>
+        <h2>Sin webhooks</h2>
+        <p>Crea uno para avisar a otro sistema cuando se registre un pago, se cree un cliente o se bloquee un internet.</p>
+      </div>
+    }
+  </div>
+</section>
+
+<section class="settings-content-card">
+  <header class="settings-content-card__header">
+    <div>
+      <h2>Entregas</h2>
+      <p>Lo que se mandó (o se mandará) a cada endpoint, con su JSON.</p>
+    </div>
+    <div class="wh-chips">
+      <button type="button" [class.is-on]="filter() === 'all'" (click)="filter.set('all')">Todas</button>
+      <button type="button" [class.is-on]="filter() === 'queued'" (click)="filter.set('queued')">En cola</button>
+      <button type="button" [class.is-on]="filter() === 'sent'" (click)="filter.set('sent')">Entregadas</button>
+      <button type="button" [class.is-on]="filter() === 'failed'" (click)="filter.set('failed')">Fallidas</button>
+    </div>
+  </header>
+  <div class="wh-table-wrap">
+    <table class="wh-table">
+      <thead><tr><th>Fecha</th><th>Webhook</th><th>Evento</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        @for (delivery of deliveries(); track delivery.id) {
+          <tr>
+            <td class="wh-when">{{ delivery.at | date: 'dd MMM, HH:mm:ss' }}</td>
+            <td>{{ delivery.webhookName }}{{ delivery.test ? ' (prueba)' : '' }}<small>{{ delivery.url }}</small></td>
+            <td>{{ store.eventLabel(delivery.event) }}</td>
+            <td><span class="wh-status wh-status--{{ delivery.status }}">{{ statusLabel(delivery.status) }}</span><small>{{ delivery.detail }}</small></td>
+            <td class="wh-td-actions">
+              <button type="button" (click)="payload.set(delivery)">Ver JSON</button>
+              @if (delivery.status === 'failed' && canEdit()) {
+                <button type="button" (click)="store.requeue(delivery.id)">Reencolar</button>
+              }
+            </td>
+          </tr>
+        } @empty {
+          <tr><td colspan="5" class="wh-empty">Aún no hay entregas. Registra un pago o crea un cliente para ver la primera.</td></tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</section>
+
+@if (editor(); as current) {
+  <button class="settings-modal-backdrop" type="button" aria-label="Cerrar" (click)="editor.set(null)"></button>
+  <section class="settings-modal wh-dialog" role="dialog" aria-modal="true" aria-label="Webhook">
+    <header>
+      <div>
+        <span>Webhook</span>
+        <h2>{{ current.id ? 'Editar webhook' : 'Nuevo webhook' }}</h2>
+        <p>El CRM hará un POST con JSON al endpoint cada vez que ocurra el evento.</p>
+      </div>
+      <button class="icon-button" type="button" aria-label="Cerrar" (click)="editor.set(null)">×</button>
+    </header>
+    <form (submit)="save($event)" novalidate>
+      <div class="channel-grid wh-form">
+        <label class="channel-wide" [class.has-error]="fieldError('name')"
+          ><span>Nombre <b>*</b></span
+          ><input name="name" placeholder="Pagos al ERP" [ngModel]="draft().name" (ngModelChange)="set('name', $event)" />
+          @if (fieldError('name'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+        <label class="channel-wide"
+          ><span>Evento <b>*</b></span
+          ><span class="settings-select"
+            ><select name="event" [ngModel]="draft().event" (ngModelChange)="set('event', $event)">
+              @for (item of events; track item.value) {
+                <option [value]="item.value">{{ item.label }}</option>
+              }</select
+            ><i>⌄</i></span
+          >
+          <small class="channel-hint">{{ eventHint(draft().event) }}</small>
+        </label>
+        <label [class.has-error]="fieldError('connectionId')"
+          ><span>Conexión</span
+          ><span class="settings-select"
+            ><select name="connection" [ngModel]="draft().connectionId" (ngModelChange)="set('connectionId', $event)">
+              <option value="">Ninguna (URL completa)</option>
+              @for (item of store.connections(); track item.id) {
+                <option [value]="item.id">{{ item.name }}</option>
+              }</select
+            ><i>⌄</i></span
+          >
+        </label>
+        <label [class.has-error]="fieldError('target')"
+          ><span>{{ draft().connectionId ? 'Ruta' : 'URL del endpoint' }} <b>*</b></span
+          ><input
+            name="target"
+            [placeholder]="draft().connectionId ? '/hooks/pagos' : 'https://hooks.ejemplo.com/crm'"
+            [ngModel]="draft().target"
+            (ngModelChange)="set('target', $event)"
+          />
+          @if (fieldError('target'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+        <p class="channel-wide wh-preview">POST <code>{{ preview() || '…' }}</code></p>
+        <label class="net-check channel-wide"
+          ><input type="checkbox" name="enabled" [ngModel]="draft().enabled" (ngModelChange)="set('enabled', $event)" />Activo</label
+        >
+      </div>
+      @if (error()) {
+        <p class="channel-error wh-form-error">{{ error() }}</p>
+      }
+      <footer>
+        <button class="button" type="button" (click)="editor.set(null)">Cancelar</button>
+        <button class="button button--primary" type="submit">{{ current.id ? 'Guardar' : 'Crear webhook' }}</button>
+      </footer>
+    </form>
+  </section>
+}
+
+@if (payload(); as delivery) {
+  <button class="settings-modal-backdrop" type="button" aria-label="Cerrar" (click)="payload.set(null)"></button>
+  <section class="settings-modal wh-dialog" role="dialog" aria-modal="true" aria-label="Contenido de la entrega">
+    <header>
+      <div>
+        <span>{{ store.eventLabel(delivery.event) }}</span>
+        <h2>Contenido de la entrega</h2>
+        <p>POST {{ delivery.url }} · {{ statusLabel(delivery.status) }} · {{ delivery.detail }}</p>
+      </div>
+      <button class="icon-button" type="button" aria-label="Cerrar" (click)="payload.set(null)">×</button>
+    </header>
+    <div class="wh-json"><pre>{{ delivery.payload }}</pre></div>
+  </section>
+}
+
+@if (removing(); as hook) {
+  <button class="confirm-backdrop" type="button" aria-label="Cancelar" (click)="removing.set(null)"></button>
+  <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+    <span class="confirm-dialog__icon">⊘</span>
+    <div>
+      <span class="confirm-dialog__eyebrow">WEBHOOK</span>
+      <h2>¿Eliminar «{{ hook.name }}»?</h2>
+      <p>Deja de avisar a {{ store.urlOf(hook) }}. El historial de entregas se conserva.</p>
+    </div>
+    <footer>
+      <button class="button" type="button" (click)="removing.set(null)">Cancelar</button>
+      <button class="button button--danger" type="button" (click)="confirmRemove()">Sí, eliminar</button>
+    </footer>
+  </section>
+}
+
+@if (toast()) {
+  <div class="settings-toast"><span>✓</span>{{ toast() }}</div>
+}

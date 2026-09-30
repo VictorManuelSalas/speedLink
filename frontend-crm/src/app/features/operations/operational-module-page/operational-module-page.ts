@@ -36,6 +36,7 @@ import {
 import { OperationalStore } from '../operational-store';
 import { lookupDisplayLabel, lookupPicklistOptions } from '../lookup-options';
 import { whatsappLink } from '../../../core/connections/connections.model';
+import { mbpsIn } from '../../../core/network/mikrotik.model';
 
 interface ContractItemDraft {
   id: string;
@@ -152,8 +153,29 @@ export class OperationalModulePage {
       .every((field) => this.draft()[field.key]?.trim());
     const hasErrors = this.validationErrors().size > 0;
     const hasAssignmentError = this.moduleKey === 'assignments' && this.assignmentValidationError();
-    return fieldsReady && !hasErrors && !hasAssignmentError && (this.moduleKey !== 'contracts' || itemsReady);
+    return (
+      fieldsReady &&
+      !hasErrors &&
+      !hasAssignmentError &&
+      !this.serviceSpeedMissing() &&
+      (this.moduleKey !== 'contracts' || itemsReady)
+    );
   });
+
+  /**
+   * Un servicio de Internet necesita su velocidad (en los campos o en el
+   * nombre, p. ej. «Hogar 20 Mbps»): con ella se crea su perfil en MikroTik.
+   */
+  readonly serviceSpeedMissing = computed(() => {
+    if (this.moduleKey !== 'services') return false;
+    const draft = this.draft();
+    return draft['type'] === 'Internet' && !(Number(draft['downloadMbps']) > 0) && !mbpsIn(draft['name']);
+  });
+
+  /** Campos condicionados (`showWhen`) se ocultan si no aplican al borrador. */
+  isFieldVisible(field: ModuleField): boolean {
+    return !field.showWhen || this.draft()[field.showWhen.field] === field.showWhen.equals;
+  }
 
   constructor() {
     this.route.queryParamMap.subscribe((params) => {
@@ -204,9 +226,13 @@ export class OperationalModulePage {
                 description: String(source['description'] ?? ''),
                 price: String(source['price'] ?? ''),
                 type: String(source['type'] ?? ''),
+                downloadMbps: String(source['downloadMbps'] ?? ''),
+                uploadMbps: String(source['uploadMbps'] ?? ''),
                 status: 'INACTIVE',
               }
-            : {},
+            : params.get('type') === 'Internet'
+              ? { type: 'Internet' }
+              : {},
         );
       } else if (this.moduleKey === 'assignments') {
         this.openCreate({
@@ -692,7 +718,10 @@ export class OperationalModulePage {
       createdAt: now,
       updatedAt: now,
     };
+    // Lo capturado en un campo que dejó de aplicar (p. ej. se cambió el tipo) no se guarda.
+    for (const field of this.definition.fields) if (!this.isFieldVisible(field)) delete record[field.key];
     this.definition.fields.forEach((field) => {
+      if (!this.isFieldVisible(field)) return;
       const rawValue = record[field.key];
       if (field.schemaKey && rawValue !== undefined && rawValue !== '') {
         record[field.schemaKey] = rawValue;

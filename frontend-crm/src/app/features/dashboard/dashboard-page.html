@@ -1,11 +1,12 @@
 <header class="page-header">
   <div>
     <div class="breadcrumbs"><span>SpeedLink CRM</span><b>›</b><span>Dashboard</span></div>
-    <h1>Buenos días, Andrea</h1>
-    <p>Este es el resumen de tu operación hoy, 14 de julio.</p>
+    <h1>{{ greeting() }}</h1>
+    <p>Este es el resumen de tu operación hoy, {{ today }}.</p>
   </div>
   <div class="page-header__actions">
-    <button class="button">⇩ Exportar</button
+    <button class="button" type="button" [disabled]="loading()" (click)="export()">⇩ Exportar</button
+    ><a class="button" routerLink="/reports">Ver reportes</a
     ><a class="button button--primary" routerLink="/customers">＋ Nuevo cliente</a>
   </div>
 </header>
@@ -16,44 +17,34 @@
     }
   </div>
   <div class="card skeleton chart-skeleton"></div>
-} @else if (error()) {
-  <section class="state-card">
-    <span>!</span>
-    <h2>No pudimos cargar el dashboard</h2>
-    <button class="button button--primary" (click)="load()">Reintentar</button>
-  </section>
-} @else if (data(); as dashboard) {
+} @else {
   <section class="kpi-grid">
     <app-kpi-card
       label="Clientes activos"
-      [value]="dashboard.activeCustomers"
+      [value]="metrics.activeCustomers()"
       icon="/icons/dashboard/fi-sr-badge.svg"
-      trend="+3.8%"
-      note="46 nuevos este mes"
+      [note]="newContracts() + ' contratos nuevos este mes'"
     />
     <app-kpi-card
       label="Ingreso mensual recurrente"
-      [value]="dashboard.monthlyRecurringRevenue"
+      [value]="metrics.mrr()"
       icon="/icons/dashboard/fi-sr-money.svg"
-      trend="+5.4%"
-      note="vs. mes anterior"
+      [note]="metrics.activeContracts() + ' contratos activos · promedio ' + (metrics.arpu() | currency: 'MXN' : 'symbol-narrow' : '1.0-0')"
       tone="green"
       [currency]="true"
     />
     <app-kpi-card
-      label="Facturas pendientes"
-      [value]="dashboard.pendingInvoices"
+      label="Facturas con saldo"
+      [value]="metrics.unpaid().length"
       icon="/icons/dashboard/fi-sr-hourglass-end.svg"
-      trend="−8.2%"
-      note="23 están vencidas"
+      [note]="overdueCount() + ' vencidas · ' + (metrics.overdueTotal() | currency: 'MXN' : 'symbol-narrow' : '1.0-0') + ' por cobrar'"
       tone="amber"
     />
     <app-kpi-card
       label="Pagos recibidos hoy"
-      [value]="dashboard.paymentsToday"
+      [value]="metrics.paymentsToday().amount"
       icon="/icons/dashboard/fi-br-earnings.svg"
-      trend="+12.6%"
-      note="52 movimientos"
+      [note]="metrics.paymentsToday().count + ' movimiento(s)'"
       tone="violet"
       [currency]="true"
     />
@@ -62,29 +53,25 @@
     <article class="card revenue-card">
       <div class="card-heading">
         <div>
-          <h2>Ingresos recurrentes</h2>
-          <p>Últimos 12 meses · miles de MXN</p>
+          <h2>Facturación mensual</h2>
+          <p>Últimos 12 meses · por fecha de emisión</p>
         </div>
-        <span class="chip">Mensual⌄</span>
+        <a class="chip" routerLink="/reports">Reportes ›</a>
       </div>
       <div class="revenue-total">
-        <strong>{{
-          dashboard.monthlyRecurringRevenue
-            | currency: 'MXN' : 'symbol-narrow' : '1.0-0' : i18n.locale()
-        }}</strong
-        ><span>↑ 5.4%</span>
+        <strong>{{ thisMonth().billed | currency: 'MXN' : 'symbol-narrow' : '1.0-0' : i18n.locale() }}</strong
+        ><span [class.is-down]="(billedChange() ?? 0) < 0">{{ percent(billedChange()) ? percent(billedChange()) + ' vs. mes anterior' : 'Este mes' }}</span>
       </div>
-      <div
-        class="bar-chart"
-        role="img"
-        aria-label="Ingresos crecientes durante los últimos 12 meses"
-      >
-        @for (point of dashboard.revenue; track point.month) {
-          <div class="bar-chart__item">
-            <div class="bar" [style.height.%]="barHeight(point.value)">
-              <span>{{ point.value }}</span>
+      <div class="bar-chart" role="img" [attr.aria-label]="'Facturación de los últimos 12 meses'">
+        @for (point of billing(); track point.key) {
+          <div
+            class="bar-chart__item"
+            [attr.title]="point.label + ': ' + (point.billed | currency: 'MXN' : 'symbol-narrow' : '1.0-0') + ' facturado · ' + (point.collected | currency: 'MXN' : 'symbol-narrow' : '1.0-0') + ' cobrado'"
+          >
+            <div class="bar" [style.height.%]="barHeight(point.billed)">
+              <span>{{ (point.billed / 1000) | number: '1.0-0' }}k</span>
             </div>
-            <small>{{ point.month }}</small>
+            <small>{{ point.label }}</small>
           </div>
         }
       </div>
@@ -93,21 +80,14 @@
       <div class="card-heading">
         <div>
           <h2>Distribución de planes</h2>
-          <p>
-            {{ dashboard.activeCustomers | number: '1.0-0' : i18n.locale() }} servicios activos
-          </p>
+          <p>{{ planTotal() | number: '1.0-0' : i18n.locale() }} clientes activos</p>
         </div>
-        <button class="icon-button">•••</button>
       </div>
-      <div
-        class="donut"
-        role="img"
-        aria-label="Distribución: 44 por ciento Intermedio, 34 por ciento Básico y 22 por ciento Custom"
-      >
-        <div><strong>1,248</strong><small>Total</small></div>
+      <div class="donut" role="img" [attr.aria-label]="'Distribución: ' + donutLabel()" [style.background]="donut()">
+        <div><strong>{{ planTotal() | number: '1.0-0' : i18n.locale() }}</strong><small>Total</small></div>
       </div>
       <div class="legend">
-        @for (plan of dashboard.planDistribution; track plan.name) {
+        @for (plan of plans(); track plan.name) {
           <div>
             <i [style.background]="plan.color"></i><span>{{ plan.name }}</span
             ><b>{{ plan.customers }}</b>
@@ -124,53 +104,52 @@
       <div class="card-heading">
         <div>
           <h2>Actividad reciente</h2>
-          <p>Actualizaciones de la operación</p>
+          <p>Últimos cambios registrados en el CRM</p>
         </div>
-        <button class="link-button">Ver toda</button>
+        <a class="link-button" routerLink="/settings/activity">Ver toda</a>
       </div>
       <div class="activity-list">
-        @for (activity of dashboard.recentActivity; track activity.title + activity.time) {
+        @for (activity of recent(); track activity.id + activity.recordId) {
           <div class="activity">
-            <span class="activity__icon activity__icon--{{ activity.tone }}">•</span
+            <span class="activity__icon activity__icon--{{ activity.tone }}">{{ activity.channel === 'whatsapp' ? '✆' : '•' }}</span
             ><span
               ><b>{{ activity.title }}</b
-              ><small>{{ activity.detail }}</small></span
+              ><small>{{ activity.recordId }} · {{ activity.detail }}</small></span
             ><time>{{ activity.time }}</time>
           </div>
+        } @empty {
+          <p class="activity-empty">Aún no hay actividad registrada.</p>
         }
       </div>
     </article>
     <article class="card operations-card">
       <div class="card-heading">
         <div>
-          <h2>Operación de hoy</h2>
+          <h2>Operación</h2>
           <p>Elementos que necesitan atención</p>
         </div>
       </div>
-      <div class="operation">
-        <span class="kpi__icon kpi__icon--blue"
-          ><img src="/icons/dashboard/fi-sr-calendar.svg" alt="" /></span
+      <a class="operation" routerLink="/calendar">
+        <span class="kpi__icon kpi__icon--blue"><img src="/icons/dashboard/fi-sr-calendar.svg" alt="" /></span
         ><span
-          ><b>{{ dashboard.scheduledInstallations }}</b
-          ><small>Instalaciones programadas</small></span
+          ><b>{{ metrics.upcomingInstallations() }}</b
+          ><small>Instalaciones en los próximos 7 días</small></span
         ><em>Ver agenda →</em>
-      </div>
-      <div class="operation">
-        <span class="kpi__icon kpi__icon--amber"
-          ><img src="/icons/status/fi-sr-exclamation.svg" alt="" /></span
+      </a>
+      <a class="operation" routerLink="/tickets">
+        <span class="kpi__icon kpi__icon--amber"><img src="/icons/status/fi-sr-exclamation.svg" alt="" /></span
         ><span
-          ><b>{{ dashboard.openTickets }}</b
+          ><b>{{ metrics.openTickets() }}</b
           ><small>Tickets de soporte abiertos</small></span
         ><em>Revisar →</em>
-      </div>
-      <div class="operation">
-        <span class="kpi__icon kpi__icon--green"
-          ><img src="/icons/menu/fi-rr-subtitles.svg" alt="" /></span
+      </a>
+      <a class="operation" routerLink="/inventory">
+        <span class="kpi__icon kpi__icon--green"><img src="/icons/menu/fi-rr-subtitles.svg" alt="" /></span
         ><span
-          ><b>{{ dashboard.availableEquipment }}</b
-          ><small>Equipos disponibles</small></span
+          ><b>{{ metrics.availableEquipment() }}</b
+          ><small>Equipos disponibles{{ inventory.lowStock().length ? " · " + inventory.lowStock().length + " modelo(s) bajo mínimo" : "" }}</small></span
         ><em>Inventario →</em>
-      </div>
+      </a>
     </article>
   </section>
 }

@@ -4,6 +4,7 @@ import { CrmAttachment, CustomerTicket, TicketComment } from '../models/customer
 import { runtimeConfig } from '../runtime-config';
 import { CUSTOMERS } from './mock-crm-data';
 import { TicketsApi } from './tickets-api';
+import { emitWebhookEvent } from '../integrations/webhook-events';
 
 export interface TicketRecord extends CustomerTicket {
   clientName: string;
@@ -43,6 +44,7 @@ export class TicketStore {
     client: Pick<TicketRecord, 'clientName' | 'clientEmail' | 'clientPhone' | 'clientInitials'>,
   ): void {
     this.tickets.update((tickets) => [{ ...ticket, ...client }, ...tickets]);
+    emitWebhookEvent('ticket.created', { id: ticket.id, clientId: ticket.clientId, subject: ticket.subject, priority: ticket.priority, category: ticket.category, channel: ticket.channel });
     if (!this.useApi) return;
     const organizationId = this.session.user()?.organizationId;
     if (!organizationId) return;
@@ -65,6 +67,9 @@ export class TicketStore {
   }
 
   updateStatus(ticketId: string, status: CustomerTicket['status'], updatedAt: string): void {
+    const before = this.get(ticketId);
+    if (before && ['resolved', 'closed'].includes(status) && !['resolved', 'closed'].includes(before.status))
+      emitWebhookEvent('ticket.resolved', { id: ticketId, clientId: before.clientId, subject: before.subject, status });
     this.tickets.update((tickets) =>
       tickets.map((ticket) =>
         ticket.id === ticketId

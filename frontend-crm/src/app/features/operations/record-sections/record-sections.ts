@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   HostListener,
+  computed,
   effect,
   inject,
   input,
@@ -16,7 +17,12 @@ import { FileViewer, downloadAttachment } from '../../../shared/file-viewer.serv
 import { InlineEditableDateField } from '../../../shared/inline-editable-date-field';
 import { LeadEmailFormValue, LeadEmailModal, LeadEmailSeed } from '../lead-email-modal/lead-email-modal';
 import { TemplateModule } from '../../../core/data-access/templates/template.model';
-import { OperationalEmail, OperationalStore } from '../operational-store';
+import { OperationalActivity, OperationalEmail, OperationalStore } from '../operational-store';
+import { RecordRelations, RelatedRecord } from './record-relations';
+import { RouterLink } from '@angular/router';
+
+/** Evento del historial con el registro relacionado del que viene (null = el propio). */
+type ActivityView = OperationalActivity & { source: RelatedRecord | null };
 
 const SECTION_STYLES = `
   :host{display:block}.section-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px}
@@ -135,7 +141,7 @@ export class RecordNotesSection {
 
 @Component({
   selector: 'app-record-activity-section',
-  imports: [DatePipe, InlineEditableDateField],
+  imports: [DatePipe, InlineEditableDateField, RouterLink],
   templateUrl: './record-activity-section.html',
   styles: [SECTION_STYLES],
   styleUrl: './record-activity-section.scss',
@@ -143,68 +149,62 @@ export class RecordNotesSection {
 })
 export class RecordActivitySection {
   readonly recordId = input.required<string>();
+  /** Módulo del registro: define qué registros relacionados se incluyen. */
+  readonly moduleKey = input('');
   readonly store = inject(OperationalStore);
+  private readonly relations = inject(RecordRelations);
   readonly module = signal('');
   readonly type = signal<'' | 'CREATE' | 'EDIT' | 'DELETE'>('');
   readonly date = signal('');
-  readonly modules = [
-    'Registro',
-    'Leads',
-    'Clientes',
-    'Tickets',
-    'Servicios',
-    'Equipamiento',
-    'Asignaciones',
-    'Contratos',
-    'Facturas',
-    'Pagos',
-    'Gastos',
-    'Notas',
-    'Archivos',
-    'Correos',
-    'Calendario',
-    'Configuración de organización',
-    'Usuarios',
-    'Roles y permisos',
-    'SMTP',
-    'SMS',
-    'Portal',
-    'Plantillas',
-    'Módulos',
-    'Automatizaciones',
-    'Flujos de trabajo',
-    'Programaciones',
-    'Registro de actividad',
-    'Auditoría',
-    'Restricciones IP',
-    'Inicio de sesión 2FA',
-    'Webhooks',
-    'APIs',
-    'Integraciones',
-  ];
-  events() {
-    return this.store.activityFor(this.recordId());
-  }
-  filtered() {
-    return this.events().filter(
+  /** all = este registro y sus relacionados · own = sólo este · related = sólo relacionados. */
+  readonly origin = signal<'all' | 'own' | 'related'>('all');
+  readonly whatsappOnly = signal(false);
+
+  readonly related = computed(() => this.relations.related(this.moduleKey(), this.recordId()));
+  /** Historial del registro más el de sus relacionados, cada evento con su origen. */
+  readonly allEvents = computed<ReadonlyArray<ActivityView>>(() => {
+    const own = this.store.activityFor(this.recordId()).map((event) => ({ ...event, source: null }));
+    const related = this.related().flatMap((relation) =>
+      (this.store.activity()[relation.id] ?? []).map((event) => ({ ...event, source: relation })),
+    );
+    return [...own, ...related].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  });
+  /** Módulos presentes en el historial (en vez de una lista fija con opciones vacías). */
+  readonly modules = computed(() => [...new Set(this.allEvents().map((event) => event.module))].sort());
+  readonly whatsappCount = computed(() => this.allEvents().filter((event) => event.channel === 'whatsapp').length);
+  readonly filtered = computed(() =>
+    this.allEvents().filter(
       (e) =>
+        (this.origin() === 'all' || (this.origin() === 'own' ? !e.source : !!e.source)) &&
+        (!this.whatsappOnly() || e.channel === 'whatsapp') &&
         (!this.module() || e.module === this.module()) &&
         (!this.type() || e.actionType === this.type()) &&
         (!this.date() || this.key(e.createdAt) === this.date()),
-    );
+    ),
+  );
+
+  events() {
+    return this.allEvents();
   }
   setType(v: string) {
     this.type.set(v as '' | 'CREATE' | 'EDIT' | 'DELETE');
+  }
+  setOrigin(v: string) {
+    this.origin.set(v as 'all' | 'own' | 'related');
   }
   clear() {
     this.module.set('');
     this.type.set('');
     this.date.set('');
+    this.origin.set('all');
+    this.whatsappOnly.set(false);
   }
   typeLabel(v: 'CREATE' | 'EDIT' | 'DELETE') {
     return { CREATE: 'Creación', EDIT: 'Edición', DELETE: 'Eliminación' }[v];
   }
-  icon(t: string) {
+  icon(event: ActivityView) {
+    if (event.channel === 'whatsapp') return '✆';
+    const t = event.tone;
     return t === 'green' ? '✓' : t === 'amber' ? '!' : t === 'violet' ? '◆' : '↻';
   }
   private key(v: string) {

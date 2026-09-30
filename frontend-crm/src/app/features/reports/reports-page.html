@@ -1,0 +1,167 @@
+<header class="page-header">
+  <div>
+    <div class="breadcrumbs"><span>SpeedLink CRM</span><b>›</b><span>Reportes</span></div>
+    <h1>Reportes</h1>
+    <p>Cobranza, antigüedad de saldos, clientes y consumo, calculados con los registros del CRM.</p>
+  </div>
+  <div class="page-header__actions">
+    @if (canExport()) {
+      <button class="button" type="button" [disabled]="!ready()" (click)="export()">⇩ Exportar CSV</button>
+    }
+  </div>
+</header>
+
+<div class="rp-toolbar">
+  <nav class="rp-tabs" role="tablist">
+    <button type="button" role="tab" [class.is-on]="section() === 'billing'" (click)="section.set('billing')">Cobranza</button>
+    <button type="button" role="tab" [class.is-on]="section() === 'aging'" (click)="section.set('aging')">Antigüedad de saldos</button>
+    <button type="button" role="tab" [class.is-on]="section() === 'customers'" (click)="section.set('customers')">Clientes</button>
+    @if (usage().length) {
+      <button type="button" role="tab" [class.is-on]="section() === 'network'" (click)="section.set('network')">Consumo de red</button>
+    }
+  </nav>
+  @if (section() === 'billing' || section() === 'customers') {
+    <label class="rp-range"
+      ><span>Periodo</span
+      ><select [value]="months()" (change)="months.set(+$any($event.target).value)">
+        <option value="3">Últimos 3 meses</option>
+        <option value="6">Últimos 6 meses</option>
+        <option value="12">Últimos 12 meses</option>
+      </select></label
+    >
+  }
+</div>
+
+@if (!ready()) {
+  <div class="card skeleton rp-skeleton"></div>
+} @else {
+  @switch (section()) {
+    @case ('billing') {
+      <section class="rp-kpis">
+        <article class="card"><span>Facturado este mes</span><b>{{ current().billed | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }}</b></article>
+        <article class="card"><span>Cobrado este mes</span><b>{{ current().collected | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }}</b></article>
+        <article class="card">
+          <span>Cobranza del periodo</span><b>{{ billingTotals().rate | number: '1.0-0' }} %</b>
+          <small>{{ billingTotals().collected | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }} de {{ billingTotals().billed | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }}</small>
+        </article>
+        <article class="card">
+          <span>Adeudo vencido</span><b class="rp-bad">{{ metrics.overdueTotal() | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }}</b>
+          <small>{{ metrics.debtors().length }} cliente(s)</small>
+        </article>
+      </section>
+      <article class="card rp-card">
+        <header>
+          <h2>Facturado contra cobrado</h2>
+          <p>Por mes: facturas por fecha de emisión, pagos por fecha de pago.</p>
+        </header>
+        <app-bar-chart [categories]="labels(billing())" [series]="billingSeries()" [money]="true" ariaLabel="Facturado contra cobrado por mes" />
+      </article>
+    }
+
+    @case ('aging') {
+      <section class="rp-kpis">
+        <article class="card"><span>Saldo por cobrar</span><b>{{ agingTotal() | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }}</b><small>{{ metrics.unpaid().length }} factura(s)</small></article>
+        <article class="card"><span>Vencido</span><b class="rp-bad">{{ metrics.overdueTotal() | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }}</b></article>
+        <article class="card"><span>Clientes con adeudo</span><b>{{ metrics.debtors().length }}</b></article>
+      </section>
+      <div class="rp-grid">
+        <article class="card rp-card">
+          <header>
+            <h2>Antigüedad de saldos</h2>
+            <p>Saldo de facturas no pagadas según los días desde su vencimiento.</p>
+          </header>
+          <ul class="rp-hbars">
+            @for (bucket of aging(); track bucket.key) {
+              <li [title]="bucket.label + ': ' + bucket.count + ' factura(s) · ' + (bucket.amount | currency: 'MXN' : 'symbol-narrow' : '1.0-0')">
+                <span class="rp-hbars__label">{{ bucket.label }}</span>
+                <span class="rp-hbars__track"><i [style.width.%]="bucket.width" [style.background]="bucket.color"></i></span>
+                <span class="rp-hbars__value"
+                  ><b>{{ bucket.amount | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }}</b
+                  ><small>{{ bucket.count }} · {{ bucket.share | number: '1.0-0' }} %</small></span
+                >
+              </li>
+            }
+          </ul>
+        </article>
+        <article class="card rp-card">
+          <header>
+            <h2>Mayores adeudos</h2>
+            <p>Clientes con facturas vencidas, de mayor a menor.</p>
+          </header>
+          <table class="rp-table">
+            <thead>
+              <tr><th>Cliente</th><th class="num">Facturas</th><th class="num">Días</th><th class="num">Adeudo</th></tr>
+            </thead>
+            <tbody>
+              @for (debtor of debtors(); track debtor.customerId) {
+                <tr>
+                  <td><a [routerLink]="['/customers', debtor.customerId]">{{ debtor.name }}</a><small>{{ debtor.customerId }}</small></td>
+                  <td class="num">{{ debtor.invoices }}</td>
+                  <td class="num" [class.rp-bad]="debtor.oldestDays > 60">{{ debtor.oldestDays }}</td>
+                  <td class="num"><b>{{ debtor.amount | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }}</b></td>
+                </tr>
+              } @empty {
+                <tr><td colspan="4" class="rp-empty">Nadie tiene facturas vencidas.</td></tr>
+              }
+            </tbody>
+          </table>
+        </article>
+      </div>
+    }
+
+    @case ('customers') {
+      <section class="rp-kpis">
+        <article class="card"><span>Clientes activos</span><b>{{ metrics.activeCustomers() }}</b></article>
+        <article class="card"><span>Ingreso mensual recurrente</span><b>{{ metrics.mrr() | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }}</b><small>{{ metrics.activeContracts() }} contratos activos</small></article>
+        <article class="card"><span>Ingreso promedio por contrato</span><b>{{ metrics.arpu() | currency: 'MXN' : 'symbol-narrow' : '1.0-0' }}</b></article>
+        <article class="card">
+          <span>Balance del periodo</span><b [class.rp-bad]="flowTotals().started < flowTotals().ended">{{ flowTotals().started - flowTotals().ended >= 0 ? '+' : '' }}{{ flowTotals().started - flowTotals().ended }}</b>
+          <small>{{ flowTotals().started }} nuevos · {{ flowTotals().ended }} terminados</small>
+        </article>
+      </section>
+      <div class="rp-grid">
+        <article class="card rp-card">
+          <header>
+            <h2>Contratos nuevos contra terminados</h2>
+            <p>Por mes: inicio de vigencia contra vencidos o cancelados.</p>
+          </header>
+          <app-bar-chart [categories]="labels(flow())" [series]="flowSeries()" ariaLabel="Contratos nuevos contra terminados por mes" />
+        </article>
+        <article class="card rp-card">
+          <header>
+            <h2>Clientes por plan</h2>
+            <p>Plan registrado en la ficha de los clientes activos.</p>
+          </header>
+          <table class="rp-table">
+            <thead><tr><th>Plan</th><th class="num">Clientes</th><th class="num">%</th></tr></thead>
+            <tbody>
+              @for (plan of plans(); track plan.name) {
+                <tr><td>{{ plan.name }}</td><td class="num">{{ plan.customers }}</td><td class="num">{{ plan.share | number: '1.0-0' }} %</td></tr>
+              }
+            </tbody>
+          </table>
+        </article>
+      </div>
+    }
+
+    @case ('network') {
+      <article class="card rp-card">
+        <header>
+          <h2>Consumo del mes por velocidad</h2>
+          <p>Promedio por cliente con internet activo (MikroTik). Las velocidades altas no siempre consumen más.</p>
+        </header>
+        <ul class="rp-hbars">
+          @for (row of usage(); track row.label) {
+            <li [title]="row.label + ': ' + (row.average | number: '1.0-1') + ' GB por cliente'">
+              <span class="rp-hbars__label">{{ row.label }}</span>
+              <span class="rp-hbars__track"><i class="rp-single" [style.width.%]="row.width"></i></span>
+              <span class="rp-hbars__value"
+                ><b>{{ row.average | number: '1.0-0' }} GB</b><small>{{ row.clients }} cliente(s) · {{ row.gb | number: '1.0-0' }} GB total</small></span
+              >
+            </li>
+          }
+        </ul>
+      </article>
+    }
+  }
+}
