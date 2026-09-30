@@ -1,0 +1,353 @@
+<header class="settings-header settings-header--section">
+  <div>
+    <div class="breadcrumbs">
+      <a routerLink="/settings">Ajustes</a><b>›</b><span>General</span><b>›</b
+      ><span>Roles y permisos</span>
+    </div>
+    <div class="settings-title">
+      <span class="settings-icon settings-icon--large"
+        ><img src="/icons/menu/fi-rr-diploma.svg" alt=""
+      /></span>
+      <div>
+        <h1>Roles y permisos</h1>
+        <p>Qué puede ver, crear, editar, eliminar y exportar cada rol en cada módulo.</p>
+      </div>
+    </div>
+  </div>
+  @if (canCreate()) {
+    <button class="button button--primary" (click)="openCreate()">＋ Nuevo rol</button>
+  }
+</header>
+
+<section class="settings-metrics">
+  <article class="settings-metric settings-metric--violet">
+    <span>Roles</span><strong>{{ metrics().roles }}</strong
+    ><small>{{ metrics().custom }} personalizados</small>
+  </article>
+  <article class="settings-metric settings-metric--blue">
+    <span>Permisos disponibles</span><strong>{{ totalPermissions() }}</strong
+    ><small>En {{ groups().length }} áreas del CRM</small>
+  </article>
+  <article
+    class="settings-metric"
+    [class.settings-metric--green]="!metrics().unassigned"
+    [class.settings-metric--amber]="metrics().unassigned"
+  >
+    <span>Usuarios sin rol</span><strong>{{ metrics().unassigned }}</strong
+    ><small>{{ metrics().unassigned ? 'Revisa sus cuentas' : 'Todos tienen un rol' }}</small>
+  </article>
+</section>
+
+<div class="roles-layout">
+  <aside class="settings-content-card roles-list" aria-label="Roles">
+    @for (role of access.roles(); track role.id) {
+      <button
+        type="button"
+        class="roles-list__item"
+        [class.is-active]="role.id === selected().id"
+        (click)="select(role.id)"
+      >
+        <span class="roles-list__name"
+          >{{ role.name }}
+          @if (role.system) {
+            <em class="roles-badge">Sistema</em>
+          }</span
+        >
+        <small>{{ role.description || 'Sin descripción' }}</small>
+        <span class="roles-list__meta"
+          >{{ userCount(role.id) }} {{ userCount(role.id) === 1 ? 'usuario' : 'usuarios' }} ·
+          {{ permissionCount(role) }}/{{ totalPermissions() }} permisos</span
+        >
+      </button>
+    }
+  </aside>
+
+  @if (selected(); as role) {
+    <section class="settings-content-card roles-detail">
+      <header class="roles-detail__header">
+        <div>
+          <h2>
+            {{ role.name }}
+            @if (role.system) {
+              <em class="roles-badge">Sistema</em>
+            }
+            @if (isOwnRole()) {
+              <em class="roles-badge roles-badge--you">Tu rol</em>
+            }
+          </h2>
+          <p>{{ role.description || 'Sin descripción' }}</p>
+        </div>
+        <div class="roles-detail__actions">
+          @if (canUpdate() && !role.system) {
+            <button class="button" type="button" (click)="openEdit(role)">✎ Editar datos</button>
+          }
+          @if (canCreate()) {
+            <button class="button" type="button" (click)="duplicate(role)">⧉ Duplicar</button>
+          }
+          @if (canDelete() && !role.system) {
+            <button class="button roles-delete" type="button" (click)="askDelete(role)">
+              ⊘ Eliminar
+            </button>
+          }
+        </div>
+      </header>
+
+      <div class="roles-users">
+        <span class="roles-users__label">Usuarios con este rol</span>
+        @for (user of selectedUsers(); track user.id) {
+          <a
+            class="roles-user"
+            routerLink="/settings/users"
+            [queryParams]="{ role: role.id }"
+            [title]="user.email"
+            ><span>{{ initials(user.fullName) }}</span>{{ user.fullName }}</a
+          >
+        } @empty {
+          <small>Nadie tiene este rol todavía.</small>
+        }
+      </div>
+
+      @if (role.system) {
+        <p class="roles-note">
+          El administrador tiene acceso total y no se puede modificar, para que siempre haya
+          alguien capaz de administrar el CRM.
+        </p>
+      } @else if (!canUpdate()) {
+        <p class="roles-note">Tu rol solo permite consultar los permisos.</p>
+      } @else {
+        <p class="roles-note">
+          Marcar Crear, Editar, Eliminar o Exportar activa también Ver; quitar Ver quita el resto
+          del módulo.
+        </p>
+      }
+
+      <div class="roles-matrix" role="table" aria-label="Permisos por módulo">
+        <div class="roles-matrix__row roles-matrix__row--head" role="row">
+          <span role="columnheader">Módulo</span>
+          @for (action of actions; track action) {
+            <span role="columnheader">
+              <button
+                type="button"
+                class="roles-column-toggle"
+                [disabled]="readOnly()"
+                [attr.title]="readOnly() ? null : 'Marcar o quitar en todos los módulos'"
+                (click)="toggleColumn(action)"
+              >
+                {{ actionLabels[action] }}
+              </button>
+            </span>
+          }
+          <span role="columnheader">Todo</span>
+        </div>
+        @for (group of groups(); track group.title) {
+          <div class="roles-matrix__group" role="row">
+            <span role="cell">{{ group.title }}</span>
+          </div>
+          @for (module of group.modules; track module.key) {
+            <div class="roles-matrix__row" role="row">
+              <span class="roles-module" role="cell"
+                ><b>{{ module.label }}</b><small>{{ module.description }}</small></span
+              >
+              @for (action of actions; track action) {
+                <span class="roles-cell" role="cell">
+                  @if (supports(module, action)) {
+                    <input
+                      type="checkbox"
+                      [checked]="has(module, action)"
+                      [disabled]="readOnly()"
+                      [attr.aria-label]="actionLabels[action] + ' ' + module.label"
+                      (change)="toggle(module, action)"
+                    />
+                  } @else {
+                    <span class="roles-na" title="No aplica a este módulo">—</span>
+                  }
+                </span>
+              }
+              <span class="roles-cell" role="cell">
+                <button
+                  type="button"
+                  class="roles-all roles-all--{{ moduleState(module) }}"
+                  [disabled]="readOnly()"
+                  [attr.aria-label]="'Todos los permisos de ' + module.label"
+                  (click)="toggleModule(module)"
+                >
+                  {{ moduleState(module) === 'all' ? '✓' : moduleState(module) === 'some' ? '–' : '' }}
+                </button>
+              </span>
+            </div>
+            @if (specialActions(module).length) {
+              <div class="roles-special" role="row">
+                <span role="cell">Permisos especiales</span>
+                <div role="cell">
+                  @for (action of specialActions(module); track action) {
+                    <label [class.is-on]="has(module, action)"
+                      ><input
+                        type="checkbox"
+                        [checked]="has(module, action)"
+                        [disabled]="readOnly()"
+                        (change)="toggle(module, action)"
+                      /><span
+                        ><b>{{ actionLabels[action] }}</b><small>{{ specialHints[action] }}</small></span
+                      ></label
+                    >
+                  }
+                </div>
+              </div>
+            }
+          }
+        }
+      </div>
+
+      @if (dirty() || saveError()) {
+        <footer class="roles-savebar" role="status">
+          @if (saveError()) {
+            <span class="roles-savebar__error">{{ saveError() }}</span>
+          } @else {
+            <span
+              >Cambios sin guardar · {{ draft().size }}/{{ totalPermissions() }} permisos. Aplican a
+              {{ selectedUsers().length }} usuario(s) al guardar.</span
+            >
+          }
+          <div>
+            <button class="button" type="button" (click)="resetDraft()">Descartar</button>
+            <button
+              class="button button--primary"
+              type="button"
+              [disabled]="!dirty()"
+              (click)="savePermissions()"
+            >
+              Guardar cambios
+            </button>
+          </div>
+        </footer>
+      }
+    </section>
+  }
+</div>
+
+@if (roleEditor(); as editor) {
+  <button class="settings-modal-backdrop" aria-label="Cerrar" (click)="roleEditor.set(null)"></button>
+  <section class="settings-modal roles-modal" role="dialog" aria-modal="true">
+    <header>
+      <div>
+        <span>Roles y permisos</span>
+        <h2>{{ editor.id ? 'Editar rol' : 'Nuevo rol' }}</h2>
+        <p>
+          {{
+            editor.id
+              ? 'Cambia el nombre o la descripción. Los permisos se ajustan en la matriz.'
+              : 'Después de crearlo podrás ajustar sus permisos en la matriz.'
+          }}
+        </p>
+      </div>
+      <button class="icon-button" type="button" aria-label="Cerrar" (click)="roleEditor.set(null)">
+        ×
+      </button>
+    </header>
+    <form (submit)="saveRole($event)">
+      <div class="settings-form-grid">
+        <label class="settings-field--wide"
+          ><span>Nombre del rol <b>*</b></span
+          ><input
+            type="text"
+            required
+            name="roleName"
+            [ngModel]="roleDraft().name"
+            (ngModelChange)="setRoleDraft('name', $event)"
+        /></label>
+        <label class="settings-field--wide"
+          ><span>Descripción</span
+          ><textarea
+            rows="3"
+            name="roleDescription"
+            [ngModel]="roleDraft().description"
+            (ngModelChange)="setRoleDraft('description', $event)"
+          ></textarea>
+        </label>
+        @if (!editor.id) {
+          <label class="settings-field--wide"
+            ><span>Empezar con los permisos de</span
+            ><span class="settings-select"
+              ><select name="copyFrom" [ngModel]="copyFrom()" (ngModelChange)="copyFrom.set($event)">
+                <option value="">Ninguno (sin permisos)</option>
+                @for (role of access.roles(); track role.id) {
+                  <option [value]="role.id">{{ role.name }}</option>
+                }</select
+              ><i>⌄</i></span
+            ></label
+          >
+        }
+      </div>
+      @if (roleError()) {
+        <p class="roles-error" role="alert">{{ roleError() }}</p>
+      }
+      <footer>
+        <button type="button" class="button" (click)="roleEditor.set(null)">Cancelar</button
+        ><button class="button button--primary" type="submit">
+          {{ editor.id ? 'Guardar' : 'Crear rol' }}
+        </button>
+      </footer>
+    </form>
+  </section>
+}
+
+@if (deleting(); as role) {
+  <button class="confirm-backdrop" type="button" aria-label="Cancelar" (click)="deleting.set(null)"></button>
+  <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+    <span class="confirm-dialog__icon">⊘</span>
+    <div>
+      <span class="confirm-dialog__eyebrow">ROLES Y PERMISOS</span>
+      <h2>¿Eliminar el rol {{ role.name }}?</h2>
+      @if (userCount(role.id); as count) {
+        <p>
+          <b>{{ count }} {{ count === 1 ? 'usuario tiene' : 'usuarios tienen' }}</b> este rol. Elige
+          a qué rol pasan antes de eliminarlo:
+        </p>
+        <span class="settings-select roles-reassign"
+          ><select [ngModel]="reassignTo()" (ngModelChange)="reassignTo.set($event)">
+            @for (option of access.roles(); track option.id) {
+              @if (option.id !== role.id) {
+                <option [value]="option.id">{{ option.name }}</option>
+              }
+            }</select
+          ><i>⌄</i></span
+        >
+      } @else {
+        <p>Nadie tiene este rol asignado.</p>
+      }
+      @if (deleteError()) {
+        <p class="roles-error" role="alert">{{ deleteError() }}</p>
+      }
+    </div>
+    <footer>
+      <button class="button" type="button" (click)="deleting.set(null)">No, cancelar</button>
+      <button class="button button--danger" type="button" (click)="confirmDelete()">
+        {{ userCount(role.id) ? 'Reasignar y eliminar' : 'Sí, eliminar' }}
+      </button>
+    </footer>
+  </section>
+}
+
+@if (pendingNavigation()) {
+  <button class="confirm-backdrop" type="button" aria-label="Cancelar" (click)="pendingNavigation.set(null)"></button>
+  <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+    <span class="confirm-dialog__icon">!</span>
+    <div>
+      <span class="confirm-dialog__eyebrow">CAMBIOS SIN GUARDAR</span>
+      <h2>¿Descartar los cambios de {{ selected().name }}?</h2>
+      <p>Modificaste permisos de este rol y todavía no los guardas.</p>
+    </div>
+    <footer>
+      <button class="button" type="button" (click)="pendingNavigation.set(null)">
+        Seguir editando
+      </button>
+      <button class="button button--danger" type="button" (click)="discardAndContinue()">
+        Descartar cambios
+      </button>
+    </footer>
+  </section>
+}
+
+@if (toast()) {
+  <div class="settings-toast"><span>✓</span>{{ toast() }}</div>
+}

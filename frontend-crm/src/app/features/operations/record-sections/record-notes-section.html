@@ -77,10 +77,11 @@
             @if (note.attachments.length) {
               <div class="attachments">
                 @for (file of note.attachments; track file.id) {
-                  <a [href]="file.url" target="_blank" rel="noopener"
-                    ><b>{{ file.fileName }}</b
-                    ><small>{{ size(file.size) }}</small></a
-                  >
+                  <app-file-item
+                    [file]="file"
+                    [deletable]="true"
+                    (deleted)="removeAttachment(note.id, file.id)"
+                  />
                 }
               </div>
             }

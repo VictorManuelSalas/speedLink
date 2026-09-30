@@ -145,7 +145,7 @@
         <b>{{ value() | date: 'dd MMM y, HH:mm' }}</b
         ><i></i>
         @if (config().auditUser; as user) {
-          <a [routerLink]="user.id ? ['/users', user.id] : null"
+          <a [routerLink]="user.id ? ['/settings/users', user.id] : null"
             ><span>{{ user.initials }}</span
             ><b>{{ user.fullName }}</b>
             <aside>

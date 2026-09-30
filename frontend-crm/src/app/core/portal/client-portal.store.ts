@@ -1,5 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { TicketStore } from '../data-access/ticket-store';
+import { PortalAccessStore } from './portal-access.store';
 
 export interface ClientPortalConfig {
   name: string;
@@ -13,7 +14,21 @@ export interface ClientPortalConfig {
   allowTicketCreation: boolean;
   primaryColor: string;
   supportEmail: string;
+  /** El cliente puede subir archivos (requiere mostrar archivos). */
+  allowFileUpload: boolean;
+  /** Muestra al cliente el nombre de sus redes WiFi (nunca el acceso de administración). */
+  showWifi: boolean;
+  /**
+   * Direcciones anteriores: redirigen a la actual para que no se rompan los
+   * enlaces de invitaciones ya enviadas.
+   */
+  previousSlugs: string[];
 }
+
+export type PortalConfigErrors = Partial<Record<keyof ClientPortalConfig, string>>;
+
+/** Rutas que un slug no puede ocupar por chocar con páginas del sistema. */
+const RESERVED_SLUGS = new Set(['admin', 'api', 'login', 'portal', 'settings', 'www', 'app']);
 
 export interface PortalProfile {
   id: string;
@@ -47,6 +62,8 @@ export interface PortalAttachment {
   size: number;
   date: string;
   url?: string;
+  /** Lo subió el propio cliente: sólo esos puede eliminarlos desde el portal. */
+  uploadedByClient?: boolean;
 }
 
 const CONFIG_KEY = 'speedlink-client-portal-config';
@@ -66,6 +83,10 @@ const DEFAULT_CONFIG: ClientPortalConfig = {
   allowTicketCreation: true,
   primaryColor: '#2563eb',
   supportEmail: 'soporte@speedlink.mx',
+  allowFileUpload: true,
+  // Activo en la demostración para que la cuenta de prueba vea su WiFi.
+  showWifi: true,
+  previousSlugs: [],
 };
 
 const DEFAULT_PROFILE: PortalProfile = {
@@ -107,6 +128,7 @@ const DEFAULT_TICKETS: PortalTicket[] = [
 @Injectable({ providedIn: 'root' })
 export class ClientPortalStore {
   private readonly crmTickets = inject(TicketStore);
+  private readonly access = inject(PortalAccessStore);
   readonly config = signal(this.read<ClientPortalConfig>(CONFIG_KEY, DEFAULT_CONFIG));
   readonly profile = signal(this.read<PortalProfile>(PROFILE_KEY, DEFAULT_PROFILE));
   readonly tickets = signal(this.read<PortalTicket[]>(TICKETS_KEY, DEFAULT_TICKETS));
@@ -205,6 +227,50 @@ export class ClientPortalStore {
     });
   }
 
+  validateConfig(config: ClientPortalConfig): PortalConfigErrors {
+    const errors: PortalConfigErrors = {};
+    const name = config.name.trim();
+    if (name.length < 3 || name.length > 40) errors.name = 'Entre 3 y 40 caracteres.';
+    if (!/^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/.test(config.slug))
+      errors.slug = 'De 3 a 40 minúsculas, números o guiones; sin guion al inicio ni al final.';
+    else if (RESERVED_SLUGS.has(config.slug)) errors.slug = 'Esa dirección está reservada por el sistema.';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(config.supportEmail.trim()))
+      errors.supportEmail = 'Correo con formato inválido.';
+    if (!/^#[0-9a-f]{6}$/i.test(config.primaryColor)) errors.primaryColor = 'Color en formato #RRGGBB.';
+    return errors;
+  }
+
+  /**
+   * Guarda validando. Si cambia la dirección, la anterior queda como alias para
+   * que los enlaces que ya tienen los clientes sigan funcionando.
+   */
+  saveConfig(next: ClientPortalConfig): { ok: true } | { ok: false; error: string } {
+    if (Object.keys(this.validateConfig(next)).length)
+      return { ok: false, error: 'Revisa los campos marcados.' };
+    const current = this.config();
+    const previousSlugs =
+      next.slug !== current.slug
+        ? [current.slug, ...current.previousSlugs].filter((slug) => slug !== next.slug).slice(0, 5)
+        : current.previousSlugs.filter((slug) => slug !== next.slug);
+    this.updateConfig({
+      ...next,
+      name: next.name.trim(),
+      supportEmail: next.supportEmail.trim().toLowerCase(),
+      // Crear tickets o subir archivos sin poder verlos no tiene sentido.
+      allowTicketCreation: next.showTickets && next.allowTicketCreation,
+      allowFileUpload: next.showAttachments && next.allowFileUpload,
+      previousSlugs,
+    });
+    return { ok: true };
+  }
+
+  /** `current`: dirección vigente; `alias`: anterior, hay que redirigir. */
+  resolveSlug(slug: string | null): 'current' | 'alias' | 'unknown' {
+    const config = this.config();
+    if (slug === config.slug) return 'current';
+    return slug && config.previousSlugs.includes(slug) ? 'alias' : 'unknown';
+  }
+
   updateConfig(patch: Partial<ClientPortalConfig>): void {
     this.config.update((config) => ({ ...config, ...patch }));
     localStorage.setItem(CONFIG_KEY, JSON.stringify(this.config()));
@@ -216,12 +282,22 @@ export class ClientPortalStore {
   }
 
   login(account: string, pin: string): boolean {
-    const valid = account.trim().toLocaleUpperCase() === this.profile().id && pin === '1044';
+    const accountId = account.trim().toLocaleUpperCase();
+    // 1044 es el PIN de demostración; el resto viene de las invitaciones.
+    const valid =
+      accountId === this.profile().id &&
+      !this.access.isDisabled(accountId) &&
+      (pin === '1044' || this.access.matches(accountId, pin));
     if (valid) {
       sessionStorage.setItem('speedlink-client-portal-session', 'active');
       this.authenticated.set(true);
     }
     return valid;
+  }
+
+  /** Para explicar al cliente por qué no entra, en vez de "PIN incorrecto". */
+  isAccessDisabled(account: string): boolean {
+    return this.access.isDisabled(account);
   }
 
   logout(): void {
@@ -282,6 +358,7 @@ export class ClientPortalStore {
   }
 
   addFiles(files: FileList): void {
+    if (!this.config().allowFileUpload) return;
     const added = Array.from(files).map((file) => ({
       id: `file-${Date.now()}-${file.name}`,
       name: file.name,
@@ -289,8 +366,22 @@ export class ClientPortalStore {
       size: file.size,
       date: new Date().toISOString(),
       url: URL.createObjectURL(file),
+      uploadedByClient: true,
     }));
     this.attachments.update((current) => [...added, ...current]);
+    this.persistAttachments();
+  }
+
+  removeFile(id: string): void {
+    const file = this.attachments().find((item) => item.id === id);
+    if (!file?.uploadedByClient) return;
+    if (file.url?.startsWith('blob:')) URL.revokeObjectURL(file.url);
+    this.attachments.update((current) => current.filter((item) => item.id !== id));
+    this.persistAttachments();
+  }
+
+  /** La URL blob no sobrevive a una recarga, así que no se guarda. */
+  private persistAttachments(): void {
     localStorage.setItem(
       ATTACHMENTS_KEY,
       JSON.stringify(this.attachments().map(({ url: _url, ...file }) => file)),

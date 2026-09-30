@@ -1,0 +1,50 @@
+<div class="file-item">
+  <button class="file-item__main" type="button" [title]="'Ver ' + file().fileName" (click)="view()">
+    @if (isImage()) {
+      <img class="file-item__thumb" [src]="file().url" alt="" />
+    } @else {
+      <span class="file-item__thumb">{{ extension() }}</span>
+    }
+    <span class="file-item__text">
+      <b>{{ file().fileName }}</b>
+      <small>{{ formatSize(file().size) }}</small>
+    </span>
+  </button>
+
+  <div class="file-item__actions">
+    @if (confirming()) {
+      <span class="file-item__confirm">¿Eliminar?</span>
+      <button type="button" class="danger" (click)="remove()">Sí</button>
+      <button type="button" (click)="confirming.set(false)">No</button>
+    } @else {
+      <button type="button" aria-label="Ver" title="Ver" (click)="view()">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      </button>
+      <button type="button" aria-label="Descargar" title="Descargar" (click)="download()">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 4v11" />
+          <path d="m7 10 5 5 5-5" />
+          <path d="M5 20h14" />
+        </svg>
+      </button>
+      @if (deletable()) {
+        <button
+          type="button"
+          class="danger"
+          aria-label="Eliminar"
+          title="Eliminar"
+          (click)="confirming.set(true)"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7h16" />
+            <path d="M9 7V4h6v3" />
+            <path d="M6 7l1 13h10l1-13" />
+          </svg>
+        </button>
+      }
+    }
+  </div>
+</div>

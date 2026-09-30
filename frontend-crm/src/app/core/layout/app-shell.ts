@@ -12,9 +12,12 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
-import { SessionContext } from '../auth/session-context';
+import { Permission, SessionContext } from '../auth/session-context';
+import { AccessModuleKey, accessModules } from '../auth/access.model';
+import { customModules, isHiddenInMenu } from '../modules/custom-modules.model';
 import { LanguageService } from '../i18n/language.service';
 
+import { FilePreviewModal } from '../../shared/file-preview-modal';
 interface NavItem {
   label: string;
   icon: string;
@@ -36,7 +39,7 @@ interface AppNotification {
 
 @Component({
   selector: 'app-shell',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, FilePreviewModal],
   templateUrl: './app-shell.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -222,9 +225,37 @@ export class AppShell {
   readonly searchResults = computed(() => {
     const query = this.searchQuery().trim().toLocaleLowerCase('es');
     return query
-      ? this.quickLinks.filter((item) => item.label.toLocaleLowerCase('es').includes(query))
-      : this.quickLinks;
+      ? this.visibleQuickLinks().filter((item) => item.label.toLocaleLowerCase('es').includes(query))
+      : this.visibleQuickLinks();
   });
+  readonly visibleQuickLinks = computed(() =>
+    this.quickLinks.filter((item) => this.canSee(item.route)),
+  );
+  /** Menú del modo actual sin las entradas que el rol no puede abrir. */
+  readonly visibleNavigation = computed(() =>
+    (this.settingsMode() ? this.settingsNavigation : [...this.navigation, this.customNavigation()])
+      .map((group) => ({
+        ...group,
+        items: group.items.filter(
+          // Ocultar un nativo en Ajustes > Módulos sólo lo quita del menú; el permiso sigue igual.
+          (item) => this.canSee(item.route) && !isHiddenInMenu(item.route.split('/')[1] ?? ''),
+        ),
+      }))
+      .filter((group) => group.items.length),
+  );
+  /** Módulos creados en Ajustes > Módulos que se muestran en el menú. */
+  private readonly customNavigation = computed<NavGroup>(() => ({
+    title: 'PERSONALIZADOS',
+    items: customModules()
+      .filter((module) => module.showInMenu)
+      .map((module) => ({ label: module.plural, icon: module.icon, route: `/m/${module.key}` })),
+  }));
+  /** Primera pantalla de ajustes permitida; null oculta el acceso a configuración. */
+  readonly settingsEntry = computed(
+    () =>
+      this.settingsNavigation.flatMap((group) => group.items).find((item) => this.canSee(item.route))
+        ?.route ?? null,
+  );
   readonly navigation: readonly NavGroup[] = [
     {
       title: 'MENÚ PRINCIPAL',
@@ -468,8 +499,20 @@ export class AppShell {
       .toLocaleUpperCase();
   }
   userRole(): string {
-    const role = this.session.user()?.role;
-    return role === 'admin' ? 'Administradora' : role === 'manager' ? 'Gerente' : 'Usuario';
+    return this.session.user()?.roleName ?? 'Usuario';
+  }
+  /** Permiso que exige cada ruta del menú; sin permiso, la entrada no se muestra. */
+  private routePermission(route: string): Permission | null {
+    if (route === '/settings/users') return 'users.read';
+    if (route === '/settings/roles') return 'roles.read';
+    if (route.startsWith('/settings')) return 'settings.read';
+    if (route.startsWith('/m/')) return `${route.split('/')[2] as `cm_${string}`}.read`;
+    const module = route.split('/')[1] as AccessModuleKey;
+    return accessModules().some((item) => item.key === module) ? `${module}.read` : null;
+  }
+  canSee(route: string): boolean {
+    const permission = this.routePermission(route);
+    return !permission || this.session.hasPermission(permission);
   }
   closeMobile(): void {
     this.mobileOpen.set(false);

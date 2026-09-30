@@ -30,7 +30,7 @@
     </div>
     <nav class="nav" aria-label="Navegación principal">
       @if (settingsMode()) {
-        <a class="nav__mode-switch" routerLink="/dashboard" (click)="closeMobile()"
+        <a class="nav__mode-switch" [routerLink]="session.homeRoute()" (click)="closeMobile()"
           ><span class="nav-icon"
             ><img src="/icons/ui/fi-rr-angle-double-small-left.svg" alt=""
           /></span>
@@ -39,7 +39,7 @@
           }
         </a>
       }
-      @for (group of settingsMode() ? settingsNavigation : navigation; track group.title) {
+      @for (group of visibleNavigation(); track group.title) {
         @if (!collapsed()) {
           <p class="nav__label">{{ i18n.t(group.title) }}</p>
         }
@@ -97,7 +97,7 @@
                 ><small>{{ session.user()?.email }}</small></span
               >
             </div>
-            <a routerLink="/users/usr-andrea-torres" (click)="userMenuOpen.set(false)"
+            <a [routerLink]="['/settings/users', session.user()?.id]" (click)="userMenuOpen.set(false)"
               ><img src="/icons/settings/fi-rr-portrait-2.svg" alt="" /><span>{{
                 i18n.t('Ver perfil')
               }}</span></a
@@ -180,12 +180,14 @@
         }
       </div>
       <div class="topbar__actions">
-        <a
-          class="icon-button settings-button"
-          [routerLink]="settingsMode() ? '/dashboard' : '/settings/organization'"
-          [attr.aria-label]="settingsMode() ? 'Cerrar configuración' : 'Abrir configuración'"
-          ><img src="/icons/ui/settings-sliders.svg" alt=""
-        /></a>
+        @if (settingsEntry(); as entry) {
+          <a
+            class="icon-button settings-button"
+            [routerLink]="settingsMode() ? session.homeRoute() : entry"
+            [attr.aria-label]="settingsMode() ? 'Cerrar configuración' : 'Abrir configuración'"
+            ><img src="/icons/ui/settings-sliders.svg" alt=""
+          /></a>
+        }
         <div
           class="notification-menu"
           (mouseenter)="notificationsOpen.set(true)"
@@ -273,4 +275,5 @@
       </div>
     </aside>
   }
+  <app-file-preview-modal />
 </div>

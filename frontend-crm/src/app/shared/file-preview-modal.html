@@ -1,0 +1,85 @@
+@if (current(); as open) {
+  <div class="file-preview-overlay" (click)="close()">
+    <section
+      class="file-preview"
+      role="dialog"
+      aria-modal="true"
+      [attr.aria-label]="'Vista previa de ' + open.file.fileName"
+      (click)="$event.stopPropagation()"
+    >
+      <header>
+        <div>
+          <b [title]="open.file.fileName">{{ open.file.fileName }}</b>
+          <small
+            >{{ formatSize(open.file.size) }} ·
+            {{ open.file.createdAt | date: 'dd MMM y, HH:mm' }}</small
+          >
+        </div>
+        <button class="icon-close" type="button" aria-label="Cerrar" (click)="close()">×</button>
+      </header>
+
+      <div class="file-preview__body">
+        @if (failed()) {
+          <div class="file-preview__empty">
+            <span>!</span>
+            <p>No se pudo cargar la vista previa. Prueba descargando el archivo.</p>
+          </div>
+        } @else {
+          @switch (kind()) {
+            @case ('image') {
+              <img [src]="open.file.url" [alt]="open.file.fileName" (error)="failed.set(true)" />
+            }
+            @case ('pdf') {
+              <iframe [src]="resourceUrl()" [title]="open.file.fileName"></iframe>
+            }
+            @case ('video') {
+              <video [src]="open.file.url" controls (error)="failed.set(true)"></video>
+            }
+            @case ('audio') {
+              <audio [src]="open.file.url" controls (error)="failed.set(true)"></audio>
+            }
+            @case ('text') {
+              <pre>{{ text() ?? 'Cargando…' }}</pre>
+            }
+            @default {
+              <div class="file-preview__empty">
+                <span>{{ open.file.fileName.split('.').pop()?.slice(0, 4)?.toUpperCase() }}</span>
+                <p>
+                  {{
+                    unavailable()
+                      ? 'La vista previa de este documento no está disponible. Descárgalo para abrirlo.'
+                      : 'Este tipo de archivo no tiene vista previa. Descárgalo para abrirlo.'
+                  }}
+                </p>
+              </div>
+            }
+          }
+        }
+      </div>
+
+      <footer>
+        @if (confirmingDelete()) {
+          <span class="file-preview__confirm">¿Eliminar este archivo? No se puede deshacer.</span>
+          <button class="button" type="button" (click)="confirmingDelete.set(false)">
+            Cancelar
+          </button>
+          <button class="button button--danger" type="button" (click)="confirmDelete()">
+            Sí, eliminar
+          </button>
+        } @else {
+          @if (open.onDelete) {
+            <button class="button file-preview__delete" type="button" (click)="confirmingDelete.set(true)">
+              ⊘ Eliminar
+            </button>
+          }
+          @if (!unavailable()) {
+            <a class="button" [href]="open.file.url" target="_blank" rel="noopener">↗ Abrir</a>
+          }
+          <button class="button button--primary" type="button" (click)="download()">
+            ⇩ Descargar
+          </button>
+        }
+      </footer>
+    </section>
+  </div>
+}

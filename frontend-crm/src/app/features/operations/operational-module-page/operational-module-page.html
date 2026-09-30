@@ -1,5 +1,5 @@
-<app-record-list [title]="definition.title" [description]="definition.description"
-  [newLabel]="'Nuevo ' + definition.singular" [baseRoute]="'/' + moduleKey" [accent]="definition.accent"
+<app-record-list [accessModule]="accessModule" [title]="definition.title" [description]="definition.description"
+  [newLabel]="newLabel" [baseRoute]="listRoute" [accent]="definition.accent"
   [records]="records()" [columns]="definition.columns" [fields]="listFields()" [widgets]="listWidgets()"
   [rowActions]="listRowActions()" [bulkActions]="listBulkActions()" [initialQuery]="query()" (newRequested)="openCreate()"
   (rowAction)="handleListRowAction($event.actionId, $event.record)" (bulkAction)="
@@ -16,7 +16,7 @@
   <div class="page-header__actions">
     <button class="button" type="button" (click)="exportCsv()">⇩ Exportar</button>
     <button class="button button--primary" type="button" (click)="openCreate()">
-      ＋ Nuevo {{ definition.singular }}
+      ＋ {{ newLabel }}
     </button>
   </div>
 </header>
@@ -33,7 +33,7 @@
       <h2>Agregar servicio</h2>
       <p>{{ editingContract()?.contractNumber }} · {{ editingContract()?.clientName }}</p>
       } @else {
-      <h2>Nuevo {{ definition.singular }}</h2>
+      <h2>{{ newLabel }}</h2>
       <p>Completa la información principal del registro.</p>
       }
     </div>
@@ -49,7 +49,7 @@
     @if (!editingContractId()) {
     @for (field of definition.fields; track field.key) {
     @if (!(moduleKey === 'contracts' && field.key === 'totalMonthly')) {
-    <label [class.full]="field.key === 'description' || field.key === 'notes'" [class.has-error]="getFieldError(field.key)">
+    <label [class.full]="field.key === 'description' || field.key === 'notes' || field.multiline" [class.has-error]="getFieldError(field.key)">
       <span class="field-label">{{ field.label
         }}
         @if (field.required) {
@@ -66,7 +66,7 @@
           placeholder="Seleccionar fecha" [alwaysShowEdit]="true" [compact]="true"
           (valueSaved)="setDraft(field.key, $event)" />
       </div>
-      } @else if (field.key === 'description' || field.key === 'notes') {
+      } @else if (field.key === 'description' || field.key === 'notes' || field.multiline) {
       <textarea #textarea rows="4" [required]="field.required" [value]="draft()[field.key] || ''"
         [placeholder]="field.placeholder || ''" (input)="setDraft(field.key, textarea.value)"
         [class.error]="getFieldError(field.key)"></textarea>
@@ -74,12 +74,14 @@
       <!-- Lo genera el sistema y debe ser único: se muestra, no se captura. -->
       <input class="is-generated" type="text" [value]="draft()[field.key] || ''" readonly tabindex="-1" />
       } @else {
-      <input #input [type]="inputType(field.key, field.type)" [required]="field.required" [min]="field.min ?? null"
+      <input #input [type]="inputType(field.key, field.type, field.validateAs)" [required]="field.required" [min]="field.min ?? null"
         [max]="field.max ?? null" [value]="draft()[field.key] || ''" [placeholder]="field.placeholder || ''"
         (input)="setDraft(field.key, input.value)" [class.error]="getFieldError(field.key)" />
       }
       @if (getFieldError(field.key)) {
       <span class="field-error">{{ getFieldError(field.key) }}</span>
+      } @else if (field.helpText) {
+      <span class="field-help">{{ field.helpText }}</span>
       }
     </label>
     }

@@ -143,6 +143,26 @@ export class TicketStore {
     );
   }
 
+  /** Quita un archivo del ticket o, con `commentId`, de ese comentario. */
+  removeAttachment(ticketId: string, attachmentId: string, commentId?: string): void {
+    const keep = (files: ReadonlyArray<CrmAttachment>) => files.filter((f) => f.id !== attachmentId);
+    this.tickets.update((tickets) =>
+      tickets.map((ticket) => {
+        if (ticket.id !== ticketId) return ticket;
+        return commentId
+          ? {
+              ...ticket,
+              comments: ticket.comments.map((comment) =>
+                comment.id === commentId
+                  ? { ...comment, attachments: keep(comment.attachments) }
+                  : comment,
+              ),
+            }
+          : { ...ticket, attachments: keep(ticket.attachments) };
+      }),
+    );
+  }
+
   private mockTickets(): ReadonlyArray<TicketRecord> {
     return CUSTOMERS.flatMap((customer) =>
       customer.tickets.map((ticket) => ({

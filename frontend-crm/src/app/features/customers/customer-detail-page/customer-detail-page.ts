@@ -17,6 +17,9 @@ import {
   TimelineItem,
 } from '../../../core/models/customer';
 import { AttachmentPicker } from '../../../shared/attachment-picker';
+import { FileItem } from '../../../shared/file-item';
+import { ModulesStore } from '../../../core/modules/modules-store';
+import { CustomFieldsCard } from '../../operations/record-sections/custom-fields-card';
 import {
   RecordDetailLayout,
   RecordHeader,
@@ -32,7 +35,17 @@ import { RecordEventsSection } from '../../operations/lead-events-section/lead-e
 import { RecordField, RecordFieldConfig } from '../../../shared/record-field';
 import { OperationalStore } from '../../operations/operational-store';
 import { CalendarStore } from '../../calendar/calendar-store';
-import { buildPrintableDocument } from '../../operations/printable-document/printable-document.data';
+import {
+  ORGANIZATION,
+  buildPrintableDocument,
+} from '../../operations/printable-document/printable-document.data';
+import { TemplateStore } from '../../../core/data-access/templates/template-store';
+import { RenderContext } from '../../../core/data-access/templates/template.model';
+import { ClientPortalStore } from '../../../core/portal/client-portal.store';
+import {
+  PortalAccessStatus,
+  PortalAccessStore,
+} from '../../../core/portal/portal-access.store';
 import { DocumentPdfService } from '../../operations/printable-document/document-pdf.service';
 import { PendingEmailService } from '../../operations/pending-email.service';
 import { LeadEmailSeed } from '../../operations/lead-email-modal/lead-email-modal';
@@ -74,6 +87,8 @@ interface SubscribedContractService {
     RouterLink,
     CustomerTicketsSection,
     AttachmentPicker,
+    FileItem,
+    CustomFieldsCard,
     RecordEventsSection,
     RecordField,
     RecordActivitySection,
@@ -102,7 +117,13 @@ export class CustomerDetailPage {
   private readonly pdf = inject(DocumentPdfService);
   private readonly pendingEmail = inject(PendingEmailService);
   private readonly router = inject(Router);
+  private readonly templates = inject(TemplateStore);
+  private readonly portal = inject(ClientPortalStore);
+  private readonly portalAccess = inject(PortalAccessStore);
+  private readonly modules = inject(ModulesStore);
   readonly customer = signal<Customer | undefined>(undefined);
+  readonly inviteMenuOpen = signal(false);
+  readonly portalDialog = signal<'disable' | 'enable' | 'regenerate' | null>(null);
   readonly loading = signal(true);
   readonly activeTab = signal('Resumen');
   readonly changePlanConfirmOpen = signal(false);
@@ -646,6 +667,22 @@ export class CustomerDetailPage {
     if (this.editingNoteId() === noteId) this.cancelNoteEdit();
     this.noteMenuId.set(null);
   }
+  removeNoteAttachment(customer: Customer, noteId: string, fileId: string): void {
+    this.customer.update((current) =>
+      current?.id === customer.id
+        ? {
+            ...current,
+            notes: current.notes.map((note) =>
+              note.id === noteId
+                ? { ...note, attachments: note.attachments?.filter((file) => file.id !== fileId) }
+                : note,
+            ),
+            updatedAt: new Date().toISOString(),
+            updatedBy: this.currentUser,
+          }
+        : current,
+    );
+  }
   filteredTimeline(customer: Customer): ReadonlyArray<TimelineItem> {
     const filter = this.activityFilter();
     return [...customer.timeline]
@@ -680,6 +717,136 @@ export class CustomerDetailPage {
   @HostListener('document:click') closeBillingMenus(): void {
     this.invoiceMenuId.set(null);
     this.paymentMenuId.set(null);
+    this.inviteMenuOpen.set(false);
+  }
+  toggleInviteMenu(event: MouseEvent, customer: Customer): void {
+    event.stopPropagation();
+    // El PIN se crea aquí y no al pintar el enlace de WhatsApp.
+    this.portalAccess.pinFor(customer.id);
+    this.inviteMenuOpen.update((open) => !open);
+  }
+  portalStatus(customer: Customer): PortalAccessStatus {
+    return this.portalAccess.status(customer.id);
+  }
+  portalStatusLabel(customer: Customer): string {
+    return { none: 'Sin invitar', active: 'Activo', disabled: 'Deshabilitado' }[
+      this.portalStatus(customer)
+    ];
+  }
+  portalAccessInfo(customer: Customer) {
+    return this.portalAccess.access(customer.id);
+  }
+  openPortalDialog(dialog: 'disable' | 'enable' | 'regenerate'): void {
+    this.inviteMenuOpen.set(false);
+    this.portalDialog.set(dialog);
+  }
+  disablePortalAccess(customer: Customer): void {
+    this.portalAccess.disable(customer.id, this.currentUser.fullName);
+    this.logPortalEvent(customer, 'Acceso al portal deshabilitado', 'El cliente ya no puede iniciar sesión.', 'amber');
+    this.portalDialog.set(null);
+  }
+  enablePortalAccess(customer: Customer, newPin: boolean): void {
+    this.portalAccess.enable(customer.id, this.currentUser.fullName, newPin);
+    this.logPortalEvent(
+      customer,
+      'Acceso al portal habilitado',
+      newPin ? 'Se generó un PIN nuevo; hay que reenviar la invitación.' : 'Conserva su PIN anterior.',
+      'green',
+    );
+    this.portalDialog.set(null);
+  }
+  regeneratePortalPin(customer: Customer): void {
+    this.portalAccess.regeneratePin(customer.id, this.currentUser.fullName);
+    this.logPortalEvent(customer, 'PIN del portal regenerado', 'El PIN anterior dejó de funcionar.', 'blue');
+    this.portalDialog.set(null);
+  }
+  /** WhatsApp no avisa si se envió: se toma el clic como invitación enviada. */
+  inviteToPortalByWhatsapp(customer: Customer): void {
+    this.inviteMenuOpen.set(false);
+    this.markPortalInvited(customer, 'WhatsApp');
+  }
+  /** Abre el redactor de Correos con la invitación al portal ya escrita. */
+  inviteToPortalByEmail(customer: Customer): void {
+    this.inviteMenuOpen.set(false);
+    this.markPortalInvited(customer, 'correo');
+    const invite = this.renderPortalInvite(customer, 'tpl-customer-portal-invite');
+    this.emailSeed.set({
+      title: 'Invitación al portal',
+      to: customer.email,
+      from: this.currentUser.email,
+      subject: invite.subject,
+      body: invite.body,
+    });
+    this.activeTab.set('Correos');
+    this.composeEmailKey.update((key) => key + 1);
+  }
+  /** Sin número destino: WhatsApp abre el selector de contacto. */
+  portalInviteWhatsappUrl(customer: Customer): string {
+    const invite = this.renderPortalInvite(customer, 'tpl-customer-portal-whatsapp');
+    return `https://wa.me/?text=${encodeURIComponent(invite.body)}`;
+  }
+  private markPortalInvited(customer: Customer, channel: string): void {
+    const wasActive = this.portalStatus(customer) === 'active';
+    this.portalAccess.markInvited(customer.id, this.currentUser.fullName);
+    this.logPortalEvent(
+      customer,
+      wasActive ? 'Invitación al portal reenviada' : 'Invitación al portal enviada',
+      `Enviada por ${channel}.`,
+      'blue',
+    );
+  }
+  private logPortalEvent(
+    customer: Customer,
+    title: string,
+    detail: string,
+    tone: 'blue' | 'green' | 'amber',
+  ): void {
+    const event: TimelineItem = {
+      id: `activity-portal-${Date.now()}`,
+      title,
+      detail,
+      date: new Date().toISOString(),
+      type: 'update',
+      author: this.currentUser.fullName,
+    };
+    this.customer.update((current) =>
+      current?.id === customer.id ? { ...current, timeline: [event, ...current.timeline] } : current,
+    );
+    this.operationalStore.logActivity(customer.id, title, detail, tone, 'Portal', 'EDIT');
+  }
+  /** El cliente con sus campos personalizados, para resolver ${custom.…} en plantillas. */
+  templateRecord(customer: Customer): Record<string, unknown> {
+    return { ...customer, ...this.modules.valuesFor('customers', customer.id) };
+  }
+  private renderPortalInvite(
+    customer: Customer,
+    templateId: string,
+  ): { subject: string; body: string } {
+    const template = this.templates.find(templateId);
+    const record = {
+      ...this.templateRecord(customer),
+      portalUrl: `${window.location.origin}/portal/${this.portal.config().slug}`,
+      portalPin: this.portalAccess.pinFor(customer.id),
+    };
+    const context: RenderContext = {
+      record,
+      organization: ORGANIZATION,
+      userName: this.currentUser.fullName,
+      formatMoney: (value) =>
+        new Intl.NumberFormat(this.i18n.locale(), { style: 'currency', currency: 'MXN' }).format(
+          Number(value),
+        ),
+      formatDate: (value) =>
+        new Intl.DateTimeFormat(this.i18n.locale(), { dateStyle: 'medium' }).format(
+          new Date(String(value)),
+        ),
+    };
+    if (!template) {
+      // La plantilla pudo borrarse en Configuración: invitación mínima de respaldo.
+      const body = `Hola ${customer.name}, entra al portal de ${ORGANIZATION.name}: ${record.portalUrl}\nNúmero de cliente: ${customer.id}\nPIN: ${record.portalPin}`;
+      return { subject: `Acceso al portal de ${ORGANIZATION.name}`, body };
+    }
+    return this.templates.render(template, context);
   }
   private positionBillingMenu(trigger: HTMLElement): void {
     const rect = trigger.getBoundingClientRect();

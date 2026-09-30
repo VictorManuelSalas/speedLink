@@ -1,6 +1,7 @@
 import { SYSTEM_USER_IDS, SYSTEM_USER_LABELS } from '../../core/data-access/system-users';
+import { currentTaxes } from '../../core/organization/organization.model';
 
-export type OperationalModuleKey =
+export type NativeModuleKey =
   | 'leads'
   | 'services'
   | 'equipment'
@@ -10,6 +11,9 @@ export type OperationalModuleKey =
   | 'payments'
   | 'expenses'
   | 'customers';
+
+/** Nativo o personalizado (`cm_…`, creado en Ajustes > Módulos). */
+export type OperationalModuleKey = NativeModuleKey | `cm_${string}`;
 
 export type ColumnType = 'text' | 'identity' | 'status' | 'money' | 'date' | 'lookup';
 
@@ -33,6 +37,13 @@ export interface ModuleField {
   optionLabels?: Readonly<Record<string, string>>;
   validateAs?: 'email' | 'phone' | 'number' | 'date' | 'text' | 'url';
   lookupModule?: string;
+  /** Lo calcula el sistema (p. ej. impuestos y total): se muestra pero no se captura. */
+  computed?: boolean;
+  /** Varias líneas en el formulario (campo personalizado de texto largo). */
+  multiline?: boolean;
+  /** Campo personalizado agregado desde Ajustes > Módulos. */
+  custom?: boolean;
+  helpText?: string;
 }
 
 export interface OperationalModuleDefinition {
@@ -41,6 +52,8 @@ export interface OperationalModuleDefinition {
   title: string;
   description: string;
   singular: string;
+  /** Sólo módulos personalizados; los nativos se deducen del sustantivo. */
+  gender?: 'm' | 'f';
   idPrefix: string;
   accent: string;
   columns: ReadonlyArray<{ key: string; label: string; type: ColumnType }>;
@@ -50,7 +63,7 @@ export interface OperationalModuleDefinition {
 }
 
 export const OPERATIONAL_MODULES: Readonly<
-  Record<OperationalModuleKey, OperationalModuleDefinition>
+  Record<NativeModuleKey, OperationalModuleDefinition>
 > = {
   leads: {
     key: 'leads',
@@ -551,8 +564,24 @@ export const OPERATIONAL_MODULES: Readonly<
       { key: 'issueDate', label: 'Fecha de emisión', type: 'date', validateAs: 'date' },
       { key: 'dueDate', label: 'Fecha de vencimiento', type: 'date', required: true, validateAs: 'date' },
       { key: 'subtotal', label: 'Subtotal', type: 'number', required: true, min: 0, max: 9999999 },
-      { key: 'taxAmount', label: 'Impuestos', type: 'number', min: 0, max: 9999999 },
-      { key: 'total', label: 'Total', type: 'number', required: true, min: 0, max: 9999999 },
+      {
+        key: 'taxName',
+        label: 'Impuesto',
+        type: 'select',
+        required: true,
+        schemaKey: 'taxRateId',
+        // Catálogo vivo de Ajustes > Impuestos: sólo las tasas activas.
+        get options() {
+          return currentTaxes()
+            .filter((tax) => tax.active)
+            .map((tax) => tax.id);
+        },
+        get optionLabels() {
+          return Object.fromEntries(currentTaxes().map((tax) => [tax.id, tax.name]));
+        },
+      },
+      { key: 'taxAmount', label: 'Impuestos', type: 'number', min: 0, max: 9999999, computed: true },
+      { key: 'total', label: 'Total', type: 'number', min: 0, max: 9999999, computed: true },
       {
         key: 'status',
         label: 'Estado',

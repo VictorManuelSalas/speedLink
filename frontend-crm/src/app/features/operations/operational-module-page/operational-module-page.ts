@@ -1,4 +1,8 @@
 import { CurrencyPipe } from '@angular/common';
+import { AccessModuleKey, accessModules } from '../../../core/auth/access.model';
+import { moduleDefinition, moduleRoute } from '../module-registry';
+import { OrganizationStore } from '../../../core/organization/organization-store';
+import { computeTax } from '../../../core/organization/organization.model';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -31,6 +35,7 @@ import {
 } from '../operational-modules.data';
 import { OperationalStore } from '../operational-store';
 import { lookupDisplayLabel, lookupPicklistOptions } from '../lookup-options';
+import { whatsappLink } from '../../../core/connections/connections.model';
 
 interface ContractItemDraft {
   id: string;
@@ -57,11 +62,26 @@ const INTERNET_PERMANENCE_MONTHS = 6;
 export class OperationalModulePage {
   private readonly route = inject(ActivatedRoute);
   private readonly store = inject(OperationalStore);
+  private readonly organization = inject(OrganizationStore);
   private readonly crmData = inject(CRM_DATA);
   private readonly validator = inject(FieldValidatorService);
   readonly i18n = inject(LanguageService);
-  readonly moduleKey = this.route.snapshot.data['moduleKey'] as OperationalModuleKey;
-  readonly definition = OPERATIONAL_MODULES[this.moduleKey];
+  /** Nativos lo traen en `data`; los personalizados, en el parámetro `/m/:moduleKey`. */
+  readonly moduleKey = (this.route.snapshot.data['moduleKey'] ??
+    this.route.snapshot.paramMap.get('moduleKey')) as OperationalModuleKey;
+  /** Módulo de permisos equivalente; null si el módulo no tiene control de acceso propio. */
+  readonly accessModule: AccessModuleKey | null = accessModules().some((m) => m.key === this.moduleKey)
+    ? (this.moduleKey as AccessModuleKey)
+    : null;
+  readonly definition = moduleDefinition(this.moduleKey)!;
+  /** `/leads` o `/m/cm_…`: los personalizados viven bajo `/m`. */
+  readonly listRoute = moduleRoute(this.moduleKey);
+  /** "Nuevo lead", "Nueva factura": el artículo concuerda con el género del sustantivo. */
+  readonly newLabel = `${
+    (this.definition.gender ?? (/(ción|ura)$/.test(this.definition.singular) ? 'f' : 'm')) === 'f'
+      ? 'Nueva'
+      : 'Nuevo'
+  } ${this.definition.singular}`;
   readonly query = signal('');
   readonly statusFilter = signal('all');
   readonly dense = signal(false);
@@ -82,7 +102,7 @@ export class OperationalModulePage {
   readonly contractTotal = computed(() =>
     this.contractItems().reduce((total, item) => total + item.quantity * item.unitPrice, 0),
   );
-  readonly records = computed(() => this.store.records()[this.moduleKey]);
+  readonly records = computed(() => this.store.recordsFor(this.moduleKey));
   readonly statusOptions = computed(() =>
     this.definition.fields.find((field) => field.key === 'status')?.options?.length
       ? [...(this.definition.fields.find((field) => field.key === 'status')?.options ?? [])]
@@ -200,16 +220,8 @@ export class OperationalModulePage {
           invoice: invoiceId,
         });
       } else if (this.moduleKey === 'invoices') {
-        const today = new Date();
-        const due = new Date(today);
-        due.setDate(due.getDate() + 10);
-        this.openCreate({
-          client: clientId,
-          folio: `FAC-${clientId}-${this.records().length + 1}`,
-          issueDate: today.toISOString().slice(0, 10),
-          dueDate: due.toISOString().slice(0, 10),
-          status: 'PENDING',
-        });
+        // Folio, fechas e impuesto salen de Ajustes > Organización / Impuestos.
+        this.openCreate({ client: clientId });
       }
     });
   }
@@ -366,8 +378,41 @@ export class OperationalModulePage {
     return `${prefix}${String(next).padStart(4, '0')}`;
   }
   /** Campos que el usuario no captura porque el sistema los genera. */
+  /**
+   * Siguiente id libre: el mayor número usado + 1. Contar registros repetiría
+   * ids en cuanto se elimina alguno.
+   */
+  private nextRecordId(): string {
+    const prefix = `${this.definition.idPrefix}-`;
+    const highest = this.records().reduce((max, record) => {
+      const number = record.id.startsWith(prefix) ? Number(record.id.slice(prefix.length)) : NaN;
+      return Number.isFinite(number) ? Math.max(max, number) : max;
+    }, 1000);
+    return `${prefix}${highest + 1}`;
+  }
   isGeneratedField(key: string): boolean {
-    return this.moduleKey === 'contracts' && key === 'contractNumber';
+    if (this.moduleKey === 'contracts' && key === 'contractNumber') return true;
+    return !!this.definition.fields.find((field) => field.key === key)?.computed;
+  }
+  /** Valores iniciales de una factura según la organización y el catálogo de impuestos. */
+  private invoiceDefaults(): Record<string, string> {
+    const profile = this.organization.profile();
+    const today = new Date();
+    const due = new Date(today);
+    due.setDate(due.getDate() + profile.paymentTermsDays);
+    return {
+      folio: this.organization.previewInvoiceFolio(),
+      issueDate: today.toISOString().slice(0, 10),
+      dueDate: due.toISOString().slice(0, 10),
+      status: 'PENDING',
+      taxName: this.organization.defaultTax()?.id ?? '',
+    };
+  }
+  /** Impuestos y total de la factura en captura: siempre derivados, nunca escritos a mano. */
+  private withInvoiceTotals(draft: Record<string, string>): Record<string, string> {
+    const tax = this.organization.tax(draft['taxName'] ?? '');
+    const breakdown = computeTax(Number(draft['subtotal']) || 0, tax);
+    return { ...draft, taxAmount: String(breakdown.taxAmount), total: String(breakdown.total) };
   }
   openCreate(seed: Record<string, string> = {}): void {
     this.editingContractId.set(null);
@@ -377,7 +422,9 @@ export class OperationalModulePage {
         ? { status: 'NEW', ...seed }
         : this.moduleKey === 'contracts'
           ? { ...seed, contractNumber: this.nextContractNumber() }
-          : seed;
+          : this.moduleKey === 'invoices'
+            ? this.withInvoiceTotals({ ...this.invoiceDefaults(), ...seed })
+            : seed;
     this.draft.set(initialDraft);
     this.validationErrors.set(new Set());
     this.contractItems.set(
@@ -425,7 +472,12 @@ export class OperationalModulePage {
     }
   }
   setDraft(key: string, value: string): void {
-    this.draft.update((draft) => ({ ...draft, [key]: value }));
+    this.draft.update((draft) => {
+      const next = { ...draft, [key]: value };
+      return this.moduleKey === 'invoices' && (key === 'subtotal' || key === 'taxName')
+        ? this.withInvoiceTotals(next)
+        : next;
+    });
     this.validateField(key);
     if (this.moduleKey === 'assignments' && key === 'equipment' && value) {
       const assignments = this.store.records()['assignments'] || [];
@@ -597,8 +649,16 @@ export class OperationalModulePage {
   private syncContractTotal(): void {
     this.setDraft('totalMonthly', String(this.contractTotal()));
   }
-  inputType(key: string, type: 'text' | 'number' | 'date' | 'select' | 'status' | 'lookup'): string {
+  inputType(
+    key: string,
+    type: 'text' | 'number' | 'date' | 'select' | 'status' | 'lookup',
+    validateAs?: string,
+  ): string {
     if (type !== 'text') return type;
+    // Los campos personalizados declaran su formato; los nativos se deducen del nombre.
+    if (validateAs === 'email') return 'email';
+    if (validateAs === 'phone') return 'tel';
+    if (validateAs === 'url') return 'url';
     if (key.toLowerCase().includes('email')) return 'email';
     if (key.toLowerCase().includes('phone') || key === 'cellphone') return 'tel';
     if (key.toLowerCase().includes('url')) return 'url';
@@ -627,7 +687,7 @@ export class OperationalModulePage {
     }
     const now = new Date().toISOString();
     const record: OperationalRecord = {
-      id: `${this.definition.idPrefix}-${this.records().length + 1001}`,
+      id: this.nextRecordId(),
       ...this.draft(),
       createdAt: now,
       updatedAt: now,
@@ -651,7 +711,20 @@ export class OperationalModulePage {
       } as Partial<Record<OperationalModuleKey, string>>
     )[this.moduleKey];
     if (dateDefault && !record[dateDefault]) record[dateDefault] = now;
-    if (this.moduleKey === 'invoices' && !record['taxAmount']) record['taxAmount'] = 0;
+    if (this.moduleKey === 'invoices') {
+      // La factura guarda la tasa con la que se emitió: si después se edita la
+      // tasa en Ajustes, las facturas ya emitidas no cambian de importe.
+      const tax = this.organization.tax(String(record['taxRateId'] ?? ''));
+      const breakdown = computeTax(Number(record['subtotal']) || 0, tax);
+      record['subtotal'] = breakdown.subtotal;
+      record['taxAmount'] = breakdown.taxAmount;
+      record['total'] = breakdown.total;
+      record['taxRate'] = tax && tax.factor === 'rate' ? tax.rate : 0;
+      record['taxName'] = tax?.name ?? 'Sin impuesto';
+      // Reserva el folio sugerido para que la serie no se repita.
+      if (record['folio'] === this.organization.previewInvoiceFolio())
+        record['folio'] = this.organization.consumeInvoiceFolio();
+    }
     if (this.moduleKey === 'payments' && !record['method']) record['method'] = 'CASH';
     if (this.moduleKey === 'contracts') {
       record['totalMonthly'] = this.contractTotal();
@@ -742,7 +815,7 @@ export class OperationalModulePage {
     this.rowMenuId.set(null);
   }
   whatsappUrl(value: string | number | boolean): string {
-    return `https://wa.me/${String(value ?? '').replace(/\D/g, '')}`;
+    return whatsappLink(value);
   }
   deleteRecord(id: string): void {
     this.store.archive(this.moduleKey, id);

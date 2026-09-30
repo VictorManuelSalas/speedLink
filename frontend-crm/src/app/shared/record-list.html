@@ -7,12 +7,17 @@
         <p>{{ description() }}</p>
       </div>
       <div class="heading-actions">
-        <button class="button" type="button" (click)="importModalOpen.set(true)">⇧ Importar</button
-        ><button class="button" type="button" (click)="exportRows(filtered(), '')">
-          ⇩ Exportar</button
-        ><button class="button primary" type="button" (click)="newRequested.emit()">
-          ＋ {{ newLabel() }}
-        </button>
+        @if (can('create')) {
+          <button class="button" type="button" (click)="importModalOpen.set(true)">⇧ Importar</button>
+        }
+        @if (can('export')) {
+          <button class="button" type="button" (click)="exportRows(filtered(), '')">⇩ Exportar</button>
+        }
+        @if (can('create')) {
+          <button class="button primary" type="button" (click)="newRequested.emit()">
+            ＋ {{ newLabel() }}
+          </button>
+        }
       </div>
     </header>
     @if (importModalOpen()) {
@@ -174,7 +179,7 @@
           <span
             ><b>{{ selectedCount() }}</b> seleccionados</span
           >
-          @for (action of bulkActions(); track action.id) {
+          @for (action of visibleBulkActions(); track action.id) {
             <button type="button" [class.danger]="action.danger" (click)="runBulkAction(action.id)">
               {{ action.icon || actionIcon(action.id) }} {{ action.label }}
             </button>
@@ -264,7 +269,7 @@
                   <button type="button" (click)="toggleMenu($event, rowId(record))">•••</button>
                   @if (menuId() === rowId(record)) {
                     <div class="row-menu" (click)="$event.stopPropagation()">
-                      @for (action of rowActions(); track action.id) {
+                      @for (action of visibleRowActions(); track action.id) {
                         @if (action.id === 'view') {
                           <a [routerLink]="[baseRoute(), rowId(record)]"
                             ><span>{{ action.icon || '↗' }}</span
@@ -379,3 +384,42 @@
         </footer>
       </section>
     }
+@if (pendingDelete(); as pending) {
+  <button
+    class="confirm-backdrop"
+    type="button"
+    aria-label="Cancelar"
+    (click)="pendingDelete.set(null)"
+  ></button>
+  <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+    <span class="confirm-dialog__icon">⊘</span>
+    <div>
+      <span class="confirm-dialog__eyebrow">ELIMINAR {{ title().toUpperCase() }}</span>
+      <h2>
+        {{
+          pending.rows.length === 1
+            ? '¿Eliminar este registro?'
+            : '¿Eliminar ' + pending.rows.length + ' registros?'
+        }}
+      </h2>
+      <p>
+        @if (pending.rows.length === 1) {
+          Se eliminará <b>{{ rowId(pending.rows[0]) }}</b> de {{ title() }}.
+        } @else {
+          Se eliminarán los <b>{{ pending.rows.length }}</b> registros seleccionados de
+          {{ title() }}.
+        }
+      </p>
+      <div class="confirm-dialog__warning">
+        <span>!</span>
+        <p>Esta acción no se puede deshacer.</p>
+      </div>
+    </div>
+    <footer>
+      <button class="button" type="button" (click)="pendingDelete.set(null)">No, cancelar</button>
+      <button class="button button--danger" type="button" (click)="confirmDelete()">
+        Sí, eliminar
+      </button>
+    </footer>
+  </section>
+}

@@ -1,6 +1,6 @@
     @if (record(); as item) {
       <div class="breadcrumbs">
-        <a [routerLink]="['/', moduleKey]">{{ definition.title }}</a
+        <a [routerLink]="listRoute">{{ definition.title }}</a
         ><b>›</b><span>{{ item.id }}</span>
       </div>
       @if (isConvertedLead(item)) {
@@ -36,7 +36,7 @@
       } @else {
         <app-record-header
           [rootLabel]="definition.title"
-          [rootRoute]="['/', moduleKey]"
+          [rootRoute]="listRoute"
           [recordId]="item.id"
           [title]="primaryValue(item)"
           [initials]="initials(primaryValue(item))"
@@ -260,7 +260,7 @@
                               createdAt(item) | date: 'dd MMM y, HH:mm' : '' : i18n.locale()
                             }}</b>
                             <i class="audit-separator"></i>
-                            <a class="audit-user" routerLink="/users/usr-andrea-torres">
+                            <a class="audit-user" routerLink="/settings/users/usr-andrea-torres">
                               <span class="avatar audit-avatar">AT</span><b>Andrea Torres</b>
                               <aside class="audit-user-card" role="tooltip">
                                 <span class="avatar">AT</span
@@ -279,7 +279,7 @@
                               updatedAt(item) | date: 'dd MMM y, HH:mm' : '' : i18n.locale()
                             }}</b>
                             <i class="audit-separator"></i>
-                            <a class="audit-user" routerLink="/users/usr-andrea-torres">
+                            <a class="audit-user" routerLink="/settings/users/usr-andrea-torres">
                               <span class="avatar audit-avatar">AT</span><b>Andrea Torres</b>
                               <aside class="audit-user-card" role="tooltip">
                                 <span class="avatar">AT</span
@@ -430,11 +430,11 @@
                           @if (note.attachments.length) {
                             <div class="overview-pinned-note__files">
                               @for (file of note.attachments; track file.id) {
-                                <a [href]="file.url" target="_blank" rel="noopener"
-                                  ><span>{{ fileExtension(file.fileName) }}</span
-                                  ><b>{{ file.fileName }}</b
-                                  ><small>{{ formatSize(file.size) }}</small></a
-                                >
+                                <app-file-item
+                                  [file]="file"
+                                  [deletable]="true"
+                                  (deleted)="removeNoteAttachment(item.id, note.id, file.id)"
+                                />
                               }
                             </div>
                           }
@@ -553,6 +553,9 @@
                   </article>
                 </section>
               }
+            }
+            @case ('Acceso') {
+              <app-equipment-access-section [record]="item" />
             }
             @case ('Asignaciones') {
               @if (relatedItems(item).length) {
@@ -809,13 +812,11 @@
                       @if (noteItem.attachments.length) {
                         <div class="note-attachments">
                           @for (file of noteItem.attachments; track file.id) {
-                            <a [href]="file.url" target="_blank" rel="noopener"
-                              ><span>{{ file.mimeType.startsWith('image/') ? '▧' : '▤' }}</span
-                              ><span
-                                ><b>{{ file.fileName }}</b
-                                ><small>{{ formatSize(file.size) }}</small></span
-                              ></a
-                            >
+                            <app-file-item
+                              [file]="file"
+                              [deletable]="true"
+                              (deleted)="removeNoteAttachment(item.id, noteItem.id, file.id)"
+                            />
                           }
                         </div>
                       }
@@ -1041,11 +1042,18 @@
                   @for (file of recordFiles(item.id); track file.id) {
                     <article class="card file-card">
                       @if (file.mimeType.startsWith('image/')) {
-                        <img class="file-preview" [src]="file.url" [alt]="file.fileName" />
+                        <img
+                          class="file-preview file-open"
+                          [src]="file.url"
+                          [alt]="file.fileName"
+                          (click)="viewRecordFile(item.id, file)"
+                        />
                       } @else {
-                        <span class="file-type">{{ fileExtension(file.fileName) }}</span>
+                        <span class="file-type file-open" (click)="viewRecordFile(item.id, file)">{{
+                          fileExtension(file.fileName)
+                        }}</span>
                       }
-                      <span class="file-copy"
+                      <span class="file-copy file-open" (click)="viewRecordFile(item.id, file)"
                         ><b>{{ file.fileName }}</b
                         ><small
                           >{{ formatSize(file.size) }} ·
@@ -1061,16 +1069,30 @@
                       </button>
                       @if (fileMenuId() === file.id) {
                         <div class="file-action-menu" (click)="$event.stopPropagation()">
-                          <a [href]="file.url" target="_blank" rel="noopener"><span>↗</span>Ver</a
-                          ><a [href]="file.url" [attr.download]="file.fileName"
-                            ><span>⇩</span>Descargar</a
-                          ><button
-                            class="danger"
-                            type="button"
-                            (click)="deleteRecordFile(item.id, file.id)"
-                          >
-                            <span>⊘</span>Eliminar
-                          </button>
+                          @if (fileDeleteConfirmId() === file.id) {
+                            <span class="file-menu-confirm">¿Eliminar archivo?</span>
+                            <button
+                              class="danger"
+                              type="button"
+                              (click)="deleteRecordFile(item.id, file.id)"
+                            >
+                              <span>⊘</span>Sí, eliminar</button
+                            ><button type="button" (click)="fileDeleteConfirmId.set(null)">
+                              <span>×</span>Cancelar
+                            </button>
+                          } @else {
+                            <button type="button" (click)="viewRecordFile(item.id, file)">
+                              <span>◉</span>Ver</button
+                            ><button type="button" (click)="downloadRecordFile(file)">
+                              <span>⇩</span>Descargar</button
+                            ><button
+                              class="danger"
+                              type="button"
+                              (click)="fileDeleteConfirmId.set(file.id)"
+                            >
+                              <span>⊘</span>Eliminar
+                            </button>
+                          }
                         </div>
                       }
                     </article>
@@ -1143,7 +1165,7 @@
         <span>404</span>
         <h1>Registro no encontrado</h1>
         <p>Este registro no existe o fue archivado.</p>
-        <a class="button button--primary" [routerLink]="['/', moduleKey]"
+        <a class="button button--primary" [routerLink]="listRoute"
           >Volver a {{ definition.title.toLowerCase() }}</a
         >
       </section>

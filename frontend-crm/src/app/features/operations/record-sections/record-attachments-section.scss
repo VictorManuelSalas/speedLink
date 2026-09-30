@@ -82,8 +82,20 @@
         font: inherit;
         font-size: 10px;
       }
-      .menu button {
+      .menu button.danger {
         color: #dc2626;
+      }
+      .menu {
+        width: 160px;
+      }
+      .menu__confirm {
+        padding: 6px 9px 4px;
+        color: var(--color-text-secondary);
+        font-size: 11.5px;
+        font-weight: 600;
+      }
+      .file__open {
+        cursor: pointer;
       }
       @media (max-width: 700px) {
         .grid {

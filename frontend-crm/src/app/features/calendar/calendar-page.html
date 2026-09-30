@@ -104,7 +104,7 @@
               >
               <span class="agenda-copy"
                 ><i class="dot dot--{{ toneFor(event.type) }}"></i><b>{{ event.title }}</b
-                ><small>{{ event.startsAt | date: 'HH:mm' }} · {{ event.client }}</small
+                ><small>{{ event.startsAt | date: 'HH:mm' }} · {{ getClientName(event.client) }}</small
                 ><em>{{ event.assignedTo }}</em></span
               >
             </button>
@@ -217,7 +217,8 @@
           /></label>
           <label
             >Cliente *<app-styled-picklist
-              [options]="clientOptions"
+              [options]="clientOptions()"
+              [alwaysSearchable]="true"
               [value]="draft()['client'] || ''"
               (valueChange)="setDraft('client', $event)"
           /></label>

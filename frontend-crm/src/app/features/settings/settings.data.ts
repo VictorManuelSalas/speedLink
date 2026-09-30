@@ -721,37 +721,13 @@ export const SETTINGS_SECTIONS: Record<SettingsSectionKey, SettingsSection> = {
     group: 'Integraciones',
     title: 'Conexiones externas',
     shortTitle: 'Conexiones',
-    description: 'Servicios de terceros conectados al CRM y estado de su última sincronización.',
+    // La página tiene su propio componente (settings-connections-page).
+    description: 'Google Maps, WhatsApp, servidor, pagos en línea y timbrado CFDI.',
     icon: icons.connection,
-    action: 'Nueva conexión',
-    metrics: [
-      { label: 'Conexiones', value: '6', note: '5 saludables', tone: 'blue' },
-      { label: 'Sincronizadas', value: '4', note: 'En los últimos 15 min', tone: 'green' },
-      { label: 'Atención', value: '1', note: 'Credencial vencida', tone: 'amber' },
-    ],
-    rows: [
-      active('con-1', 'Google Maps', 'Geolocalización y mapas', 'Sincronizada hace 4 min'),
-      active('con-2', 'Stripe', 'Pagos y conciliación', 'Sincronizada hace 7 min'),
-      {
-        id: 'con-3',
-        title: 'CONTPAQi',
-        subtitle: 'Contabilidad y facturación',
-        meta: 'Credencial vencida',
-        status: 'Atención',
-        tone: 'danger',
-      },
-    ],
-    fields: [
-      { key: 'name', label: 'Nombre', type: 'text', required: true },
-      {
-        key: 'provider',
-        label: 'Proveedor',
-        type: 'select',
-        required: true,
-        options: ['Google Maps', 'Stripe', 'CONTPAQi', 'Otro'],
-      },
-      { key: 'apiKey', label: 'Credencial / API key', type: 'password', required: true },
-    ],
+    action: '',
+    metrics: [],
+    rows: [],
+    fields: [],
   },
   taxes: {
     key: 'taxes',

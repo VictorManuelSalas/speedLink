@@ -16,7 +16,7 @@ import { CRM_DATA } from '../../../core/data-access/crm-data';
 import { ANTENNA_LOCATION } from '../../../core/data-access/mock-crm-data';
 import { LanguageService } from '../../../core/i18n/language.service';
 import { Customer, CustomerStatus } from '../../../core/models/customer';
-import { runtimeConfig } from '../../../core/runtime-config';
+import { googleMapsApiKey } from '../../../core/connections/connections.model';
 import { loadGoogleMaps } from '../../../shared/google-maps-loader';
 
 /** Cliente ya ubicado: sólo entran los que tienen coordenadas utilizables. */
@@ -246,7 +246,7 @@ export class CustomerMapCard implements AfterViewInit, OnDestroy {
   }
 
   private initializeMap(): void {
-    const apiKey = runtimeConfig().googleMapsApiKey?.trim();
+    const apiKey = googleMapsApiKey();
     if (!apiKey) {
       this.message.set('Vista esquemática: configura la API key de Google Maps para el mapa real.');
       this.renderPins();

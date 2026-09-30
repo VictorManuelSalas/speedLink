@@ -1,64 +1,154 @@
-<div class="breadcrumbs">
-  <a routerLink="/dashboard">CRM</a><b>›</b><span>Usuarios</span><b>›</b
-  ><span>{{ user.name }}</span>
-</div>
-<header class="profile-hero">
-  <a class="icon-button" routerLink="/dashboard">←</a><span class="profile-avatar">AT</span>
-  <div>
-    <div>
-      <h1>{{ user.name }}</h1>
-      <span>● Activa</span>
-    </div>
-    <p>{{ user.id }} · Administradora</p>
+@if (user(); as user) {
+  <div class="breadcrumbs">
+    <a routerLink="/settings">Ajustes</a><b>›</b>
+    @if (canManageUsers()) {
+      <a routerLink="/settings/users">Usuarios</a>
+    } @else {
+      <span>Mi perfil</span>
+    }
+    <b>›</b><span>{{ user.fullName }}</span>
   </div>
-</header>
-<section class="profile-grid">
-  <article class="card section-card">
-    <div class="card-heading">
+  <header class="profile-hero">
+    <a class="icon-button" [routerLink]="canManageUsers() ? '/settings/users' : session.homeRoute()"
+      >←</a
+    ><span class="profile-avatar">{{ initials(user.fullName) }}</span>
+    <div>
       <div>
-        <h2>Información del usuario</h2>
-        <p>Identidad y datos de contacto</p>
+        <h1>{{ user.fullName }}</h1>
+        <span class="profile-status profile-status--{{ user.status }}"
+          >● {{ statusLabels[user.status] }}</span
+        >
       </div>
+      <p>{{ user.email }} · {{ role()?.name ?? 'Sin rol' }}</p>
     </div>
-    <dl>
-      <div>
-        <dt>Nombre completo</dt>
-        <dd>{{ user.name }}</dd>
+  </header>
+
+  @if (isSelf() && session.user()?.temporaryPassword) {
+    <p class="profile-alert" role="status">
+      Estás usando una contraseña temporal. Cámbiala abajo para proteger tu cuenta.
+    </p>
+  }
+
+  <section class="profile-grid">
+    <article class="card section-card">
+      <div class="card-heading">
+        <div>
+          <h2>Información del usuario</h2>
+          <p>Identidad y datos de contacto</p>
+        </div>
       </div>
-      <div>
-        <dt>Correo electrónico</dt>
-        <dd>
-          <a [href]="'mailto:' + user.email">{{ user.email }}</a>
-        </dd>
+      <dl>
+        <div>
+          <dt>Nombre completo</dt>
+          <dd>{{ user.fullName }}</dd>
+        </div>
+        <div>
+          <dt>Correo electrónico</dt>
+          <dd>
+            <a [href]="'mailto:' + user.email">{{ user.email }}</a>
+          </dd>
+        </div>
+        <div>
+          <dt>Teléfono</dt>
+          <dd>{{ user.phone || '—' }}</dd>
+        </div>
+        <div>
+          <dt>Rol</dt>
+          <dd>{{ role()?.name ?? 'Sin rol' }}</dd>
+        </div>
+        <div>
+          <dt>Idioma</dt>
+          <dd>{{ user.preferredLanguage === 'en' ? 'English' : 'Español' }}</dd>
+        </div>
+        <div>
+          <dt>Alta</dt>
+          <dd>{{ user.createdAt | date: 'dd MMM y, HH:mm' : '' : i18n.locale() }}</dd>
+        </div>
+        <div>
+          <dt>Último acceso</dt>
+          <dd>
+            {{
+              user.lastLoginAt
+                ? (user.lastLoginAt | date: 'dd MMM y, HH:mm' : '' : i18n.locale())
+                : 'Nunca'
+            }}
+          </dd>
+        </div>
+      </dl>
+    </article>
+
+    <aside class="card section-card">
+      <div class="card-heading">
+        <div>
+          <h2>Acceso</h2>
+          <p>Lo que permite su rol</p>
+        </div>
       </div>
-      <div>
-        <dt>Rol</dt>
-        <dd>Administradora</dd>
-      </div>
-      <div>
-        <dt>Idioma</dt>
-        <dd>Español</dd>
-      </div>
-      <div>
-        <dt>Creada</dt>
-        <dd>{{ user.createdAt | date: 'dd MMM y, HH:mm' : '' : i18n.locale() }}</dd>
-      </div>
-      <div>
-        <dt>Último acceso</dt>
-        <dd>{{ user.lastLoginAt | date: 'dd MMM y, HH:mm' : '' : i18n.locale() }}</dd>
-      </div>
-    </dl>
-  </article>
-  <aside class="card section-card">
-    <div class="card-heading">
-      <div>
-        <h2>Acceso</h2>
-        <p>Estado de la cuenta</p>
-      </div>
-    </div>
-    <div class="access">
-      <span>Estado</span><b class="success">● Activa</b><span>Organización</span
-      ><b>SpeedLink México</b><span>Autenticación</span><b>Contraseña</b>
-    </div>
-  </aside>
-</section>
+      <ul class="profile-access">
+        @for (item of accessSummary(); track item.label) {
+          <li>
+            <b>{{ item.label }}</b><small>{{ item.actions.join(' · ') }}</small>
+          </li>
+        } @empty {
+          <li><small>Sin permisos: no puede ver ningún módulo.</small></li>
+        }
+      </ul>
+    </aside>
+
+    @if (isSelf()) {
+      <article class="card section-card profile-password">
+        <div class="card-heading">
+          <div>
+            <h2>Cambiar contraseña</h2>
+            <p>Mínimo 10 caracteres, con mayúsculas, minúsculas y números.</p>
+          </div>
+        </div>
+        <form (submit)="changePassword($event)">
+          <label
+            ><span>Contraseña actual</span
+            ><input
+              type="password"
+              name="current"
+              autocomplete="current-password"
+              required
+              [ngModel]="currentPassword()"
+              (ngModelChange)="currentPassword.set($event)"
+          /></label>
+          <label
+            ><span>Nueva contraseña</span
+            ><input
+              type="password"
+              name="next"
+              autocomplete="new-password"
+              required
+              [ngModel]="newPassword()"
+              (ngModelChange)="newPassword.set($event)"
+          /></label>
+          <label
+            ><span>Confirmar nueva contraseña</span
+            ><input
+              type="password"
+              name="confirm"
+              autocomplete="new-password"
+              required
+              [ngModel]="confirmPassword()"
+              (ngModelChange)="confirmPassword.set($event)"
+          /></label>
+          @if (passwordError()) {
+            <p class="profile-error" role="alert">{{ passwordError() }}</p>
+          }
+          @if (passwordSaved()) {
+            <p class="profile-ok" role="status">✓ Contraseña actualizada.</p>
+          }
+          <button class="button button--primary" type="submit">Guardar contraseña</button>
+        </form>
+      </article>
+    }
+  </section>
+} @else {
+  <section class="card section-card profile-missing">
+    <h1>Usuario no encontrado</h1>
+    <p>La cuenta pudo haber sido eliminada.</p>
+    <a class="button button--primary" [routerLink]="session.homeRoute()">Volver</a>
+  </section>
+}

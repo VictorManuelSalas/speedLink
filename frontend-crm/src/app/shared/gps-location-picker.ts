@@ -12,7 +12,7 @@ import {
   signal,
 } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
-import { runtimeConfig } from '../core/runtime-config';
+import { googleMapsApiKey } from '../core/connections/connections.model';
 import { loadGoogleMaps } from './google-maps-loader';
 
 @Component({
@@ -116,7 +116,7 @@ export class GpsLocationPicker implements OnDestroy {
   }
 
   private initializeGoogleMap(): void {
-    const apiKey = runtimeConfig().googleMapsApiKey?.trim();
+    const apiKey = googleMapsApiKey();
     if (!apiKey) {
       this.message.set(
         'Google Maps está activo con pin y controles. Configura la API key para seleccionar también con clic o arrastre.',

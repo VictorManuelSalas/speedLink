@@ -8,13 +8,9 @@
  */
 
 import { PicklistOption } from '../../shared/styled-picklist';
-import { SYSTEM_USER_OPTIONS } from '../../core/data-access/system-users';
-import {
-  ModuleField,
-  OPERATIONAL_MODULES,
-  OperationalModuleKey,
-  OperationalRecord,
-} from './operational-modules.data';
+import { systemUserOptions } from '../../core/data-access/system-users';
+import { ModuleField, OperationalModuleKey, OperationalRecord } from './operational-modules.data';
+import { moduleDefinition } from './module-registry';
 import { OperationalStore } from './operational-store';
 
 interface LookupContext {
@@ -27,7 +23,7 @@ function detailOf(parts: ReadonlyArray<unknown>): string {
 }
 
 function toOption(record: OperationalRecord, module: OperationalModuleKey): PicklistOption {
-  const labelKey = OPERATIONAL_MODULES[module].columns[0]?.key ?? 'name';
+  const labelKey = moduleDefinition(module)?.columns[0]?.key ?? 'name';
   const label = String(record[labelKey] ?? record.id);
   switch (module) {
     case 'customers':
@@ -54,10 +50,10 @@ export function lookupPicklistOptions(
   field: ModuleField,
   context: LookupContext = {},
 ): ReadonlyArray<PicklistOption> {
-  if (field.type === 'user') return SYSTEM_USER_OPTIONS;
+  if (field.type === 'user') return systemUserOptions();
 
   const module = field.lookupModule as OperationalModuleKey | undefined;
-  if (module && OPERATIONAL_MODULES[module]) {
+  if (module && moduleDefinition(module)) {
     const options = store
       .recordsFor(module)
       // Un equipo ya instalado no puede reasignarse, salvo que sea el del registro actual.

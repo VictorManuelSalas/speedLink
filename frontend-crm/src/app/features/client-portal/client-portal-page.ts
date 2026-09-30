@@ -8,18 +8,26 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { map } from 'rxjs';
 import {
   ClientPortalStore,
   PortalAttachment,
   PortalTicket,
 } from '../../core/portal/client-portal.store';
+import { CrmAttachment } from '../../core/models/customer';
+import { DeviceAccessStore } from '../../core/equipment/device-access.store';
+import { WIFI_BANDS } from '../../core/equipment/device-access.model';
+import { OperationalStore } from '../operations/operational-store';
+import { FilePreviewModal } from '../../shared/file-preview-modal';
+import { FileViewer, NO_PREVIEW_MIME, downloadAttachment } from '../../shared/file-viewer.service';
 
 type PortalTab = 'Resumen' | 'Mi perfil' | 'Facturación' | 'Tickets' | 'Archivos';
 
 @Component({
   selector: 'app-client-portal-page',
-  imports: [FormsModule, RouterLink, CurrencyPipe, DatePipe, DecimalPipe],
+  imports: [FormsModule, RouterLink, CurrencyPipe, DatePipe, DecimalPipe, FilePreviewModal],
   templateUrl: './client-portal-page.html',
   styleUrl: './client-portal-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -31,7 +39,11 @@ export class ClientPortalPage {
   readonly editingProfile = signal(false);
   readonly ticketComposerOpen = signal(false);
   readonly selectedTicket = signal<PortalTicket | null>(null);
-  readonly selectedFile = signal<PortalAttachment | null>(null);
+  private readonly viewer = inject(FileViewer);
+  /** Archivo con el Eliminar pendiente de confirmar. */
+  readonly confirmDeleteId = signal<string | null>(null);
+  /** Documentos de demostración sin archivo real: se generan una vez. */
+  private readonly placeholderUrls = new Map<string, string>();
   readonly loginError = signal('');
   readonly toast = signal('');
   readonly today = new Date();
@@ -45,9 +57,35 @@ export class ClientPortalPage {
   profilePhone = '';
   profileAddress = '';
   profileCommunity = '';
-  readonly validSlug = computed(
-    () => this.route.snapshot.paramMap.get('slug') === this.store.config().slug,
+  private readonly router = inject(Router);
+  private readonly deviceAccess = inject(DeviceAccessStore);
+  private readonly operations = inject(OperationalStore);
+  /**
+   * Redes activas del equipo asignado al cliente. Sólo nombre y banda: la
+   * contraseña llegará del servidor y el acceso de administración nunca se muestra.
+   */
+  readonly wifiNetworks = computed(() => {
+    const clientId = this.store.profile().id;
+    return this.operations
+      .recordsFor('assignments')
+      .filter((assignment) => assignment['clientId'] === clientId && assignment['status'] === 'ACTIVE')
+      .flatMap((assignment) => this.deviceAccess.access(String(assignment['equipmentId'] ?? '')).wifi)
+      .filter((network) => network.enabled);
+  });
+  wifiBandLabel(band: string): string {
+    return WIFI_BANDS.find((item) => item.value === band)?.label ?? band;
+  }
+  /** Señal y no snapshot: al redirigir se reutiliza el componente y cambia el parámetro. */
+  private readonly slugParam = toSignal(
+    this.route.paramMap.pipe(map((params) => params.get('slug'))),
+    { initialValue: this.route.snapshot.paramMap.get('slug') },
   );
+  readonly validSlug = computed(() => this.store.resolveSlug(this.slugParam()) === 'current');
+  /** Una dirección anterior lleva a la vigente: los enlaces de invitaciones siguen sirviendo. */
+  private readonly redirectAlias = effect(() => {
+    if (this.store.resolveSlug(this.slugParam()) === 'alias')
+      void this.router.navigate(['/portal', this.store.config().slug], { replaceUrl: true });
+  });
   readonly tabs = computed<PortalTab[]>(() => [
     'Resumen',
     'Mi perfil',
@@ -79,8 +117,12 @@ export class ClientPortalPage {
     this.loginError.set('');
   }
   login(): void {
-    if (!this.store.login(this.account, this.pin))
-      this.loginError.set('El número de cliente o PIN no son correctos.');
+    if (this.store.login(this.account, this.pin)) return;
+    this.loginError.set(
+      this.store.isAccessDisabled(this.account)
+        ? 'Tu acceso al portal está deshabilitado. Contacta a soporte para reactivarlo.'
+        : 'El número de cliente o PIN no son correctos.',
+    );
   }
   startProfileEdit(): void {
     const profile = this.store.profile();
@@ -132,18 +174,41 @@ export class ClientPortalPage {
     }
   }
   viewFile(file: PortalAttachment): void {
-    if (file.url) window.open(file.url, '_blank', 'noopener');
-    else this.selectedFile.set(file);
+    this.confirmDeleteId.set(null);
+    this.viewer.open(
+      this.toAttachment(file),
+      file.uploadedByClient ? () => this.deleteFile(file) : undefined,
+    );
   }
   downloadFile(file: PortalAttachment): void {
-    const url =
-      file.url ??
-      URL.createObjectURL(new Blob([`Documento del portal: ${file.name}`], { type: file.type }));
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = file.name;
-    anchor.click();
-    if (!file.url) URL.revokeObjectURL(url);
+    void downloadAttachment(this.toAttachment(file));
+  }
+  deleteFile(file: PortalAttachment): void {
+    this.store.removeFile(file.id);
+    this.confirmDeleteId.set(null);
+    this.showToast(`${file.name} eliminado`);
+  }
+  /**
+   * Adapta el archivo del portal al visor compartido. Sin `url` (documentos de
+   * demostración, o subidos antes de recargar) no hay contenido que mostrar:
+   * se descarga un documento de referencia y el visor avisa que no hay vista previa.
+   */
+  private toAttachment(file: PortalAttachment): CrmAttachment {
+    let url = file.url ?? this.placeholderUrls.get(file.id);
+    if (!url) {
+      url = URL.createObjectURL(
+        new Blob([`Documento del portal: ${file.name}`], { type: 'text/plain' }),
+      );
+      this.placeholderUrls.set(file.id, url);
+    }
+    return {
+      id: file.id,
+      fileName: file.name,
+      mimeType: file.url ? file.type : NO_PREVIEW_MIME,
+      size: file.size,
+      url,
+      createdAt: file.date,
+    };
   }
   private showToast(message: string): void {
     this.toast.set(message);

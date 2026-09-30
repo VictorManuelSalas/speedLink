@@ -151,3 +151,6 @@
       .attachments small {
         color: var(--color-text-secondary);
       }
+      .attachments app-file-item {
+        flex: 0 1 280px;
+      }

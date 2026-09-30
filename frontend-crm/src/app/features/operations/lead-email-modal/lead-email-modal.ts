@@ -16,7 +16,10 @@ import { LanguageService } from '../../../core/i18n/language.service';
 import { TemplateStore } from '../../../core/data-access/templates/template-store';
 import { TemplateModule } from '../../../core/data-access/templates/template.model';
 import { ORGANIZATION } from '../printable-document/printable-document.data';
+import { RouterLink } from '@angular/router';
+import { ChannelsStore } from '../../../core/channels/channels-store';
 import { AttachmentPicker } from '../../../shared/attachment-picker';
+import { FileItem } from '../../../shared/file-item';
 import { OperationalEmail } from '../operational-store';
 
 export interface LeadEmailFormValue {
@@ -35,7 +38,7 @@ export interface LeadEmailSeed extends Partial<LeadEmailFormValue> {
 
 @Component({
   selector: 'app-lead-email-modal',
-  imports: [AttachmentPicker, DatePipe],
+  imports: [AttachmentPicker, DatePipe, FileItem, RouterLink],
   templateUrl: './lead-email-modal.html',
   styleUrl: './lead-email-modal.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -54,6 +57,7 @@ export class LeadEmailModal {
   readonly forward = output<OperationalEmail>();
   readonly edit = output<OperationalEmail>();
   private readonly templateStore = inject(TemplateStore);
+  private readonly channels = inject(ChannelsStore);
   private readonly i18n = inject(LanguageService);
   /** Plantillas de correo activas para este módulo, más las generales. */
   readonly templates = computed(() => this.templateStore.forModule(this.module(), 'email'));
@@ -84,9 +88,20 @@ export class LeadEmailModal {
       });
     });
   }
+  /** Sin SMTP listo no se envía: el correo quedaría como "enviado" sin salir nunca. */
+  readonly smtpBlocked = computed(() => {
+    const status = this.channels.smtpStatus();
+    if (status === 'disabled') return 'El correo saliente está desactivado.';
+    if (status === 'incomplete') return 'La configuración de SMTP está incompleta.';
+    return null;
+  });
+  readonly senderLabel = computed(() => {
+    const smtp = this.channels.smtp();
+    return smtp.fromName ? `${smtp.fromName} <${smtp.fromEmail}>` : smtp.fromEmail;
+  });
   canSend(): boolean {
     return Boolean(
-      this.to().trim() && this.from().trim() && this.subject().trim() && this.body().trim(),
+      !this.smtpBlocked() && this.to().trim() && this.subject().trim() && this.body().trim(),
     );
   }
   hasContent(): boolean {
@@ -129,7 +144,8 @@ export class LeadEmailModal {
       value: {
         to: this.to().trim(),
         cc: this.cc().trim(),
-        from: this.from().trim(),
+        // Sale siempre por la cuenta SMTP: los servidores rechazan otros remitentes.
+        from: this.channels.smtp().fromEmail,
         subject: this.subject().trim() || 'Sin asunto',
         body: this.body().trim(),
         attachments: this.attachments(),

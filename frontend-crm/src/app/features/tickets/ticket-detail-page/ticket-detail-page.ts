@@ -10,8 +10,11 @@ import {
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { TicketRecord, TicketStore } from '../../../core/data-access/ticket-store';
 import { LanguageService } from '../../../core/i18n/language.service';
+import { SessionContext } from '../../../core/auth/session-context';
 import { CrmAttachment, CustomerTicket, TicketComment } from '../../../core/models/customer';
 import { AttachmentPicker } from '../../../shared/attachment-picker';
+import { FileItem } from '../../../shared/file-item';
+import { CustomFieldsCard } from '../../operations/record-sections/custom-fields-card';
 import { RecordField, RecordFieldConfig } from '../../../shared/record-field';
 import {
   RecordDetailLayout,
@@ -24,6 +27,8 @@ import {
   selector: 'app-ticket-detail-page',
   imports: [
     AttachmentPicker,
+    FileItem,
+    CustomFieldsCard,
     DatePipe,
     RecordDetailLayout,
     RecordField,
@@ -55,6 +60,8 @@ export class TicketDetailPage {
   readonly shareMenuOpen = signal(false);
   readonly shareCopied = signal(false);
   readonly confirmDelete = signal(false);
+  private readonly session = inject(SessionContext);
+  readonly canDelete = computed(() => this.session.hasPermission('tickets.delete'));
 
   // Picklist options
   readonly statusOptions = [
@@ -188,7 +195,7 @@ export class TicketDetailPage {
         kind: 'lookup',
         options: this.responsableOptions.map((o) => o.value),
         optionLabels: Object.fromEntries(this.responsableOptions.map((o) => [o.value, o.label])),
-        route: ['/', 'users', baseConfig.key],
+        route: ['/settings/users', baseConfig.key],
       };
     } else if (key === 'category') {
       return {

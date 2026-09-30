@@ -12,7 +12,7 @@
   <a
     class="button"
     [class.is-disabled]="!store.config().enabled"
-    [href]="previewUrl()"
+    [href]="portalUrl()"
     target="_blank"
     rel="noopener"
     >↗ Abrir portal</a
@@ -32,20 +32,41 @@
           : 'El portal está deshabilitado'
       }}
     </h2>
-    <p>{{ previewUrl() }}</p>
+    <p>{{ portalUrl() }}</p>
   </div>
-  <label class="portal-switch"
+  <label class="portal-switch" [class.is-locked]="!canEdit()"
     ><input
       type="checkbox"
-      [ngModel]="store.config().enabled"
-      (ngModelChange)="togglePortal($event)"
+      [disabled]="!canEdit()"
+      [checked]="store.config().enabled"
+      (change)="requestPublish($any($event.target).checked); $any($event.target).checked = store.config().enabled"
     /><i></i><span>{{ store.config().enabled ? 'Activo' : 'Inactivo' }}</span></label
   >
 </section>
 
+<section class="portal-access-stats">
+  <article>
+    <small>Con acceso activo</small><b>{{ accessStats().active }}</b>
+  </article>
+  <article>
+    <small>Sin invitar</small><b>{{ accessStats().notInvited }}</b>
+  </article>
+  <article>
+    <small>Acceso deshabilitado</small><b>{{ accessStats().disabled }}</b>
+  </article>
+  <p>
+    Las invitaciones y el PIN de cada cliente se gestionan desde su ficha, con el botón «Invite
+    Portal». <a routerLink="/customers">Ir a clientes</a>
+  </p>
+</section>
+
+@if (!canEdit()) {
+  <p class="portal-readonly">Tu rol solo permite consultar esta configuración.</p>
+}
+
 <div class="portal-settings-layout">
   <main>
-    <section class="portal-settings-card">
+    <fieldset class="portal-settings-card" [disabled]="!canEdit()">
       <header>
         <div>
           <h2>Identidad del portal</h2>
@@ -54,26 +75,65 @@
         <span class="step-badge">01</span>
       </header>
       <div class="portal-form-grid">
-        <label><span>Nombre del portal</span><input [(ngModel)]="name" /></label>
-        <label
+        <label [class.has-error]="error('name')"
+          ><span>Nombre del portal</span
+          ><input [ngModel]="draft().name" (ngModelChange)="set('name', $event)" />
+          @if (error('name'); as message) {
+            <small class="portal-error">{{ message }}</small>
+          }
+        </label>
+        <label [class.has-error]="error('slug')"
           ><span>Dirección pública</span>
-          <div class="slug-field"><small>portal/</small><input [(ngModel)]="slug" /></div
-        ></label>
-        <label
-          ><span>Correo de soporte</span><input type="email" [(ngModel)]="supportEmail"
-        /></label>
-        <label
+          <div class="slug-field">
+            <small>portal/</small
+            ><input [ngModel]="draft().slug" (ngModelChange)="setSlug($event)" />
+          </div>
+          @if (error('slug'); as message) {
+            <small class="portal-error">{{ message }}</small>
+          } @else if (slugChanged()) {
+            <small class="portal-hint"
+              >La dirección actual ({{ store.config().slug }}) seguirá redirigiendo a la nueva, así
+              que los enlaces que ya enviaste no se rompen.</small
+            >
+          }
+        </label>
+        <label [class.has-error]="error('supportEmail')"
+          ><span>Correo de soporte</span
+          ><input
+            type="email"
+            [ngModel]="draft().supportEmail"
+            (ngModelChange)="set('supportEmail', $event)"
+          />
+          @if (error('supportEmail'); as message) {
+            <small class="portal-error">{{ message }}</small>
+          }
+        </label>
+        <label [class.has-error]="error('primaryColor')"
           ><span>Color principal</span>
           <div class="color-field">
-            <input  type="color" [(ngModel)]="primaryColor" />
-            <input 
-              [(ngModel)]="primaryColor"
-            /></div
-        ></label>
+            <input
+              type="color"
+              [ngModel]="draft().primaryColor"
+              (ngModelChange)="set('primaryColor', $event)"
+            />
+            <input
+              maxlength="7"
+              [ngModel]="draft().primaryColor"
+              (ngModelChange)="set('primaryColor', $event)"
+            />
+          </div>
+          @if (error('primaryColor'); as message) {
+            <small class="portal-error">{{ message }}</small>
+          } @else if (lowContrast()) {
+            <small class="portal-warning"
+              >Color muy claro: el texto blanco de botones y encabezados será difícil de leer.</small
+            >
+          }
+        </label>
       </div>
-    </section>
+    </fieldset>
 
-    <section class="portal-settings-card">
+    <fieldset class="portal-settings-card" [disabled]="!canEdit()">
       <header>
         <div>
           <h2>Contenido visible</h2>
@@ -85,30 +145,64 @@
         <label
           ><span class="permission-icon">▤</span
           ><span><b>Facturas</b><small>Importes, fechas y estado de facturación.</small></span
-          ><input type="checkbox" [(ngModel)]="showInvoices" /><i></i
+          ><input
+            type="checkbox"
+            [ngModel]="draft().showInvoices"
+            (ngModelChange)="toggle('showInvoices', $event)"
+          /><i></i
         ></label>
         <label
           ><span class="permission-icon">✓</span
           ><span
             ><b>Historial de pagos</b><small>Pagos aplicados, método y referencia.</small></span
-          ><input type="checkbox" [(ngModel)]="showPayments" /><i></i
+          ><input
+            type="checkbox"
+            [ngModel]="draft().showPayments"
+            (ngModelChange)="toggle('showPayments', $event)"
+          /><i></i
         ></label>
         <label
           ><span class="permission-icon">◇</span
           ><span
             ><b>Tickets de soporte</b><small>Solicitudes y seguimiento del equipo.</small></span
-          ><input type="checkbox" [(ngModel)]="showTickets" /><i></i
+          ><input
+            type="checkbox"
+            [ngModel]="draft().showTickets"
+            (ngModelChange)="toggle('showTickets', $event)"
+          /><i></i
         ></label>
         <label
           ><span class="permission-icon">▧</span
           ><span
             ><b>Archivos adjuntos</b><small>Contratos y documentos compartidos.</small></span
-          ><input type="checkbox" [(ngModel)]="showAttachments" /><i></i
+          ><input
+            type="checkbox"
+            [ngModel]="draft().showAttachments"
+            (ngModelChange)="toggle('showAttachments', $event)"
+          /><i></i
+        ></label>
+        <label
+          ><span class="permission-icon">📶</span
+          ><span
+            ><b>Mis datos de WiFi</b
+            ><small
+              >Nombre de las redes del equipo instalado. Nunca muestra el acceso de administración.</small
+            ></span
+          ><input
+            type="checkbox"
+            [ngModel]="draft().showWifi"
+            (ngModelChange)="toggle('showWifi', $event)"
+          /><i></i
         ></label>
       </div>
-    </section>
+      @if (hiddenEverything()) {
+        <p class="portal-warning portal-warning--block">
+          Con todo oculto, el cliente solo verá su resumen y su perfil.
+        </p>
+      }
+    </fieldset>
 
-    <section class="portal-settings-card">
+    <fieldset class="portal-settings-card" [disabled]="!canEdit()">
       <header>
         <div>
           <h2>Permisos de autoservicio</h2>
@@ -122,41 +216,66 @@
           ><span
             ><b>Editar información básica</b
             ><small>Correo, teléfono y domicilio de contacto.</small></span
-          ><input type="checkbox" [(ngModel)]="allowProfileEdit" /><i></i
+          ><input
+            type="checkbox"
+            [ngModel]="draft().allowProfileEdit"
+            (ngModelChange)="toggle('allowProfileEdit', $event)"
+          /><i></i
         ></label>
-        <label
+        <label [class.is-unavailable]="!draft().showTickets"
           ><span class="permission-icon">＋</span
           ><span
             ><b>Crear tickets</b
-            ><small>Permite registrar nuevas solicitudes de soporte.</small></span
-          ><input type="checkbox" [(ngModel)]="allowTicketCreation" /><i></i
+            ><small>{{
+              draft().showTickets
+                ? 'Permite registrar nuevas solicitudes de soporte.'
+                : 'Activa «Tickets de soporte» para permitirlo.'
+            }}</small></span
+          ><input
+            type="checkbox"
+            [disabled]="!draft().showTickets"
+            [ngModel]="draft().allowTicketCreation"
+            (ngModelChange)="toggle('allowTicketCreation', $event)"
+          /><i></i
+        ></label>
+        <label [class.is-unavailable]="!draft().showAttachments"
+          ><span class="permission-icon">⇧</span
+          ><span
+            ><b>Subir archivos</b
+            ><small>{{
+              draft().showAttachments
+                ? 'El cliente puede compartir documentos y fotos.'
+                : 'Activa «Archivos adjuntos» para permitirlo.'
+            }}</small></span
+          ><input
+            type="checkbox"
+            [disabled]="!draft().showAttachments"
+            [ngModel]="draft().allowFileUpload"
+            (ngModelChange)="toggle('allowFileUpload', $event)"
+          /><i></i
         ></label>
       </div>
-    </section>
-
-    <footer class="portal-settings-actions">
-      <span>
-        @if (saved()) {
-          ✓ Cambios guardados correctamente
-        }</span
-      ><button class="button" (click)="resetDraft()">Descartar</button
-      ><button class="button button--primary" (click)="save()">Guardar cambios</button>
-    </footer>
+    </fieldset>
   </main>
 
   <aside>
-    <article class="portal-preview" [style.--portal-color]="primaryColor">
+    <article class="portal-preview" [style.--portal-color]="draft().primaryColor">
       <header>
-        <span><img src="/icons/brand/speedlink-logo.svg" alt="" /></span
-        ><b>{{ name || 'Mi SpeedLink' }}</b>
+        <span
+          ><img [src]="organizationLogo() || '/icons/brand/speedlink-logo.svg'" alt="" /></span
+        ><b>{{ draft().name || 'Mi SpeedLink' }}</b>
       </header>
       <div class="portal-preview__hero">
         <span>Hola, José Luis</span><b>Tu servicio está en línea</b
         ><small>Básico · 5 Mbps</small>
       </div>
       <div class="portal-preview__stats">
-        <span><small>Próximo pago</small><b>$300</b></span
-        ><span><small>Tickets</small><b>2 abiertos</b></span>
+        @if (draft().showInvoices || draft().showPayments) {
+          <span><small>Próximo pago</small><b>$300</b></span>
+        }
+        @if (draft().showTickets) {
+          <span><small>Tickets</small><b>2 abiertos</b></span>
+        }
       </div>
       <nav><i></i><i></i><i></i><i></i></nav>
     </article>
@@ -174,5 +293,54 @@
       </dl>
       <p>Estas credenciales son exclusivas del entorno de demostración.</p>
     </article>
+    @if (store.config().previousSlugs.length) {
+      <article class="portal-aliases">
+        <span>DIRECCIONES ANTERIORES</span>
+        <p>Siguen funcionando y redirigen a la actual:</p>
+        <ul>
+          @for (slug of store.config().previousSlugs; track slug) {
+            <li>portal/{{ slug }}</li>
+          }
+        </ul>
+      </article>
+    }
   </aside>
 </div>
+
+@if (canEdit() && (dirty() || saveError())) {
+  <footer class="portal-savebar" role="status">
+    <span [class.portal-error]="saveError()">{{ saveError() || 'Tienes cambios sin guardar.' }}</span>
+    <div>
+      <button class="button" type="button" (click)="discard()">Descartar</button>
+      <button class="button button--primary" type="button" [disabled]="!dirty()" (click)="save()">
+        Guardar cambios
+      </button>
+    </div>
+  </footer>
+}
+
+@if (confirmUnpublish()) {
+  <button class="confirm-backdrop" type="button" aria-label="Cancelar" (click)="confirmUnpublish.set(false)"></button>
+  <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+    <span class="confirm-dialog__icon">⊘</span>
+    <div>
+      <span class="confirm-dialog__eyebrow">PORTAL DE CLIENTES</span>
+      <h2>¿Despublicar el portal?</h2>
+      <p>
+        <b>{{ accessStats().active }} cliente(s)</b> con acceso activo dejarán de poder entrar y
+        verán un aviso de «Portal no disponible» con el correo de soporte. Sus accesos y PIN se
+        conservan para cuando lo vuelvas a publicar.
+      </p>
+    </div>
+    <footer>
+      <button class="button" type="button" (click)="confirmUnpublish.set(false)">No, cancelar</button>
+      <button class="button button--danger" type="button" (click)="unpublish()">
+        Sí, despublicar
+      </button>
+    </footer>
+  </section>
+}
+
+@if (toast()) {
+  <div class="portal-toast"><span>✓</span>{{ toast() }}</div>
+}

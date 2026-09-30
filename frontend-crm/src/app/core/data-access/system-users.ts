@@ -4,6 +4,7 @@
  * Se usa para los lookups de responsable/owner en los módulos operativos.
  */
 
+import { signal } from '@angular/core';
 import { PicklistOption } from '../../shared/styled-picklist';
 
 export interface SystemUser {
@@ -73,14 +74,26 @@ export const SYSTEM_USERS: ReadonlyArray<SystemUser> = [
   },
 ];
 
-/** Opciones para app-styled-picklist: nombre como etiqueta, rol y correo como detalle. */
-export const SYSTEM_USER_OPTIONS: ReadonlyArray<PicklistOption> = SYSTEM_USERS.map((user) => ({
-  value: user.id,
-  label: user.fullName,
-  detail: `${user.role} · ${user.email}`,
-}));
+/**
+ * Roster vivo: lo mantiene AccessStore con los usuarios de Ajustes > Usuarios.
+ * `SYSTEM_USERS` queda como semilla para los datos de demostración.
+ */
+const liveUsers = signal<ReadonlyArray<SystemUser>>(SYSTEM_USERS);
 
-/** Mapa id → nombre, para los `optionLabels` de los campos de módulo. */
+export function setLiveSystemUsers(users: ReadonlyArray<SystemUser>): void {
+  liveUsers.set(users);
+}
+
+/** Opciones para app-styled-picklist: nombre como etiqueta, rol y correo como detalle. */
+export function systemUserOptions(): ReadonlyArray<PicklistOption> {
+  return liveUsers().map((user) => ({
+    value: user.id,
+    label: user.fullName,
+    detail: `${user.role} · ${user.email}`,
+  }));
+}
+
+/** Mapa id → nombre de la semilla, para los `optionLabels` estáticos de los módulos. */
 export const SYSTEM_USER_LABELS: Readonly<Record<string, string>> = Object.fromEntries(
   SYSTEM_USERS.map((user) => [user.id, user.fullName]),
 );
@@ -88,5 +101,9 @@ export const SYSTEM_USER_LABELS: Readonly<Record<string, string>> = Object.fromE
 export const SYSTEM_USER_IDS: ReadonlyArray<string> = SYSTEM_USERS.map((user) => user.id);
 
 export function findSystemUser(id: string): SystemUser | undefined {
-  return SYSTEM_USERS.find((user) => user.id === id);
+  return liveUsers().find((user) => user.id === id) ?? SYSTEM_USERS.find((user) => user.id === id);
+}
+
+export function systemUserName(id: string): string | undefined {
+  return findSystemUser(id)?.fullName;
 }

@@ -1,0 +1,274 @@
+<header class="settings-header settings-header--section">
+  <div>
+    <div class="breadcrumbs">
+      <a routerLink="/settings">Ajustes</a><b>›</b><span>General</span><b>›</b
+      ><span>Impuestos</span>
+    </div>
+    <div class="settings-title">
+      <span class="settings-icon settings-icon--large"
+        ><img src="/icons/menu/fi-rr-diploma.svg" alt=""
+      /></span>
+      <div>
+        <h1>Impuestos</h1>
+        <p>Tasas que se aplican a las facturas. La predeterminada se usa en las facturas nuevas.</p>
+      </div>
+    </div>
+  </div>
+  @if (canEdit()) {
+    <button class="button button--primary" (click)="openCreate()">＋ Nueva tasa</button>
+  }
+</header>
+
+<section class="settings-metrics">
+  <article class="settings-metric settings-metric--blue">
+    <span>Tasas activas</span><strong>{{ metrics().active }}</strong
+    ><small>De {{ metrics().total }} registradas</small>
+  </article>
+  <article class="settings-metric settings-metric--green">
+    <span>Predeterminada</span><strong>{{ store.defaultTax()?.name ?? '—' }}</strong
+    ><small>En facturas nuevas</small>
+  </article>
+  <article class="settings-metric settings-metric--violet">
+    <span>Facturas con tasa</span><strong>{{ metrics().withTax }}</strong
+    ><small>De {{ metrics().invoices }} facturas</small>
+  </article>
+</section>
+
+<div class="tax-layout">
+  <section class="settings-content-card">
+    <header class="settings-content-card__header">
+      <div>
+        <h2>Tasas</h2>
+        <p>Editar una tasa no cambia las facturas ya emitidas: cada una guarda su tasa.</p>
+      </div>
+    </header>
+    <div class="tax-list">
+      @for (tax of store.taxes(); track tax.id) {
+        <article class="tax-row" [class.is-inactive]="!tax.active">
+          <span class="tax-rate">{{ taxLabel(tax) }}</span>
+          <span class="tax-main"
+            ><b
+              >{{ tax.name }}
+              @if (tax.isDefault) {
+                <em class="tax-badge">Predeterminada</em>
+              }</b
+            ><small>{{ tax.description || (tax.factor === 'exempt' ? 'Exento de IVA' : 'Sin descripción') }}</small></span
+          >
+          <span class="tax-usage">{{ usedBy(tax) }} {{ usedBy(tax) === 1 ? 'factura' : 'facturas' }}</span>
+          <span
+            class="settings-status"
+            [class.settings-status--active]="tax.active"
+            [class.settings-status--inactive]="!tax.active"
+            ><i></i>{{ tax.active ? 'Activa' : 'Inactiva' }}</span
+          >
+          <span class="tax-actions">
+            @if (canEdit()) {
+              <button
+                #trigger
+                class="icon-button"
+                type="button"
+                aria-label="Acciones de la tasa"
+                (click)="toggleMenu($event, tax.id)"
+              >
+                •••
+              </button>
+              @if (menuId() === tax.id) {
+                <div
+                  class="tax-menu"
+                  role="menu"
+                  [appFloatingPanel]="trigger"
+                  align="end"
+                  (click)="$event.stopPropagation()"
+                >
+                  <button type="button" role="menuitem" (click)="openEdit(tax)">✎ Editar</button>
+                  @if (!tax.isDefault) {
+                    <button
+                      type="button"
+                      role="menuitem"
+                      [disabled]="!tax.active"
+                      [attr.title]="tax.active ? null : 'Actívala primero'"
+                      (click)="makeDefault(tax)"
+                    >
+                      ★ Hacer predeterminada
+                    </button>
+                  }
+                  <button
+                    type="button"
+                    role="menuitem"
+                    [disabled]="tax.active && !!lockReason(tax, 'deactivate')"
+                    (click)="toggleActive(tax)"
+                  >
+                    {{ tax.active ? '⏸ Desactivar' : '✓ Activar' }}
+                  </button>
+                  <button
+                    class="danger"
+                    type="button"
+                    role="menuitem"
+                    [disabled]="!!lockReason(tax, 'delete')"
+                    (click)="askDelete(tax)"
+                  >
+                    ⊘ Eliminar
+                  </button>
+                  @if (lockReason(tax, 'delete'); as reason) {
+                    <small class="tax-menu__note"
+                      >{{ reason }}{{ tax.isDefault ? ': no se puede desactivar ni eliminar.' : ': solo puede desactivarse.' }}</small
+                    >
+                  }
+                </div>
+              }
+            }
+          </span>
+        </article>
+      }
+    </div>
+  </section>
+
+  <aside class="settings-content-card tax-sim">
+    <h2>Simulador</h2>
+    <p>Cómo queda una factura con cada tasa.</p>
+    <label
+      ><span>Subtotal</span
+      ><input
+        type="number"
+        min="0"
+        step="0.01"
+        [ngModel]="simAmount()"
+        (ngModelChange)="simAmount.set(+$event || 0)"
+    /></label>
+    <label
+      ><span>Tasa</span
+      ><span class="settings-select"
+        ><select [ngModel]="simTaxId()" (ngModelChange)="simTaxId.set($event)">
+          @for (tax of store.taxes(); track tax.id) {
+            <option [value]="tax.id">{{ tax.name }}{{ tax.active ? '' : ' (inactiva)' }}</option>
+          }</select
+        ><i>⌄</i></span
+      ></label
+    >
+    <dl>
+      <div>
+        <dt>Subtotal</dt>
+        <dd>{{ simulation().subtotal | currency: 'MXN' : 'symbol-narrow' : '1.2-2' }}</dd>
+      </div>
+      <div>
+        <dt>Impuesto</dt>
+        <dd>{{ simulation().taxAmount | currency: 'MXN' : 'symbol-narrow' : '1.2-2' }}</dd>
+      </div>
+      <div class="tax-sim__total">
+        <dt>Total</dt>
+        <dd>{{ simulation().total | currency: 'MXN' : 'symbol-narrow' : '1.2-2' }}</dd>
+      </div>
+    </dl>
+    <small>Los importes se redondean a centavos, igual que en la factura.</small>
+  </aside>
+</div>
+
+@if (editor(); as current) {
+  <button class="settings-modal-backdrop" aria-label="Cerrar" (click)="editor.set(null)"></button>
+  <section class="settings-modal tax-modal" role="dialog" aria-modal="true">
+    <header>
+      <div>
+        <span>Impuestos</span>
+        <h2>{{ current.id ? 'Editar tasa' : 'Nueva tasa' }}</h2>
+        <p>
+          @if (current.id && editingUsage()) {
+            Las {{ editingUsage() }} factura(s) emitidas con esta tasa conservan su importe original.
+          } @else {
+            Disponible en las facturas nuevas en cuanto la guardes.
+          }
+        </p>
+      </div>
+      <button class="icon-button" type="button" aria-label="Cerrar" (click)="editor.set(null)">
+        ×
+      </button>
+    </header>
+    <form (submit)="save($event)">
+      <div class="settings-form-grid">
+        <label class="settings-field--wide"
+          ><span>Nombre <b>*</b></span
+          ><input
+            name="taxName"
+            required
+            placeholder="IVA 16%"
+            [ngModel]="draft().name"
+            (ngModelChange)="setDraft('name', $event)"
+        /></label>
+        <div class="settings-field--wide tax-factor" role="radiogroup" aria-label="Tipo">
+          <label
+            ><input
+              type="radio"
+              name="factor"
+              value="rate"
+              [checked]="draft().factor === 'rate'"
+              (change)="setDraft('factor', 'rate')"
+            /><span><b>Tasa</b><small>Causa impuesto a un porcentaje (incluye 0%).</small></span></label
+          >
+          <label
+            ><input
+              type="radio"
+              name="factor"
+              value="exempt"
+              [checked]="draft().factor === 'exempt'"
+              (change)="setDraft('factor', 'exempt')"
+            /><span><b>Exento</b><small>No causa impuesto. Es distinto de tasa 0%.</small></span></label
+          >
+        </div>
+        <label
+          ><span>Porcentaje <b>*</b></span
+          ><input
+            name="rate"
+            type="number"
+            min="0"
+            max="100"
+            step="0.01"
+            [disabled]="draft().factor === 'exempt'"
+            [ngModel]="draft().rate"
+            (ngModelChange)="setDraft('rate', $event)"
+        /></label>
+        <label class="settings-field--wide"
+          ><span>Descripción</span
+          ><textarea
+            rows="2"
+            name="description"
+            [ngModel]="draft().description"
+            (ngModelChange)="setDraft('description', $event)"
+          ></textarea>
+        </label>
+      </div>
+      @if (formError()) {
+        <p class="tax-error" role="alert">{{ formError() }}</p>
+      }
+      <footer>
+        <button type="button" class="button" (click)="editor.set(null)">Cancelar</button
+        ><button class="button button--primary" type="submit">
+          {{ current.id ? 'Guardar cambios' : 'Crear tasa' }}
+        </button>
+      </footer>
+    </form>
+  </section>
+}
+
+@if (deleting(); as tax) {
+  <button class="confirm-backdrop" type="button" aria-label="Cancelar" (click)="deleting.set(null)"></button>
+  <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+    <span class="confirm-dialog__icon">⊘</span>
+    <div>
+      <span class="confirm-dialog__eyebrow">IMPUESTOS</span>
+      <h2>¿Eliminar {{ tax.name }}?</h2>
+      <p>Ninguna factura la usa. Dejará de estar disponible en las facturas nuevas.</p>
+      @if (deleteError()) {
+        <p class="tax-error" role="alert">{{ deleteError() }}</p>
+      }
+    </div>
+    <footer>
+      <button class="button" type="button" (click)="deleting.set(null)">No, cancelar</button>
+      <button class="button button--danger" type="button" (click)="confirmDelete()">
+        Sí, eliminar
+      </button>
+    </footer>
+  </section>
+}
+
+@if (toast()) {
+  <div class="settings-toast"><span>✓</span>{{ toast() }}</div>
+}

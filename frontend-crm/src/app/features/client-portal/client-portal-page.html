@@ -146,6 +146,31 @@
             </article>
           }
         </section>
+        @if (store.config().showWifi && wifiNetworks().length) {
+          <section class="client-card portal-wifi">
+            <header>
+              <div>
+                <h2>Tu WiFi</h2>
+                <p>Redes de tu equipo de internet.</p>
+              </div>
+            </header>
+            <ul>
+              @for (network of wifiNetworks(); track network.id) {
+                <li>
+                  <span class="portal-wifi__icon">📶</span>
+                  <span
+                    ><b>{{ network.ssid }}</b><small>{{ wifiBandLabel(network.band) }}</small></span
+                  >
+                  <small class="portal-wifi__password">{{
+                    network.security === 'open'
+                      ? 'Red abierta'
+                      : 'Contraseña: pídela a ' + store.config().supportEmail
+                  }}</small>
+                </li>
+              }
+            </ul>
+          </section>
+        }
         <div class="client-grid">
           <section class="client-card">
             <header>
@@ -407,23 +432,38 @@
             <h1>Archivos compartidos</h1>
             <p>Contratos, comprobantes y documentos relacionados con tu cuenta.</p>
           </div>
-          <label class="client-button"
-            >⇧ Subir archivo<input type="file" multiple (change)="uploadFiles($event)"
-          /></label>
+          @if (store.config().allowFileUpload) {
+            <label class="client-button"
+              >⇧ Subir archivo<input type="file" multiple (change)="uploadFiles($event)"
+            /></label>
+          }
         </section>
         <section class="client-card files-list">
           @for (file of store.attachments(); track file.id) {
             <article>
-              <span class="file-icon">{{ file.type.includes('pdf') ? 'PDF' : 'DOC' }}</span>
-              <div>
+              <span class="file-icon file-open" (click)="viewFile(file)">{{
+                file.type.includes('pdf') ? 'PDF' : 'DOC'
+              }}</span>
+              <div class="file-open" (click)="viewFile(file)">
                 <b>{{ file.name }}</b
                 ><small
                   >{{ file.size | number: '1.0-0' : 'es-MX' }} bytes ·
                   {{ file.date | date: 'd MMM y' : '' : 'es-MX' }}</small
                 >
               </div>
-              <button (click)="viewFile(file)">Ver</button
-              ><button (click)="downloadFile(file)">Descargar</button>
+              <span class="file-actions">
+                @if (confirmDeleteId() === file.id) {
+                  <small class="file-confirm">¿Eliminar?</small
+                  ><button class="danger" (click)="deleteFile(file)">Sí, eliminar</button
+                  ><button (click)="confirmDeleteId.set(null)">Cancelar</button>
+                } @else {
+                  <button (click)="viewFile(file)">Ver</button
+                  ><button (click)="downloadFile(file)">Descargar</button>
+                  @if (file.uploadedByClient) {
+                    <button class="danger" (click)="confirmDeleteId.set(file.id)">Eliminar</button>
+                  }
+                }
+              </span>
             </article>
           } @empty {
             <div class="portal-empty">
@@ -512,25 +552,8 @@
     </div>
   </section>
 }
-@if (selectedFile(); as file) {
-  <button class="portal-modal-backdrop" (click)="selectedFile.set(null)"></button>
-  <section class="portal-modal">
-    <header>
-      <div>
-        <span>DOCUMENTO</span>
-        <h2>{{ file.name }}</h2>
-        <p>Compartido {{ file.date | date: 'd MMM y' : '' : 'es-MX' }}</p>
-      </div>
-      <button (click)="selectedFile.set(null)">×</button>
-    </header>
-    <div class="file-preview">
-      <span>{{ file.type.includes('pdf') ? 'PDF' : 'DOC' }}</span>
-      <h3>{{ file.name }}</h3>
-      <p>{{ file.size | number: '1.0-0' : 'es-MX' }} bytes · {{ file.type }}</p>
-      <button class="client-button" (click)="downloadFile(file)">⇩ Descargar archivo</button>
-    </div>
-  </section>
-}
+<!-- El portal no vive dentro del layout del CRM: monta su propio visor. -->
+<app-file-preview-modal />
 @if (toast()) {
   <div class="portal-toast">✓ {{ toast() }}</div>
 }

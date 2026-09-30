@@ -1,0 +1,337 @@
+<header class="settings-header settings-header--section">
+  <div>
+    <div class="breadcrumbs">
+      <a routerLink="/settings">Ajustes</a><b>›</b><span>General</span><b>›</b
+      ><span>Organización</span>
+    </div>
+    <div class="settings-title">
+      <span class="settings-icon settings-icon--large"
+        ><img src="/icons/settings/fi-rr-building.svg" alt=""
+      /></span>
+      <div>
+        <h1>Organización</h1>
+        <p>Identidad, datos fiscales y preferencias de facturación de la empresa.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+@if (!canEdit()) {
+  <p class="org-readonly">Tu rol solo permite consultar estos datos.</p>
+}
+
+<div class="org-layout">
+  <form class="org-form" (submit)="$event.preventDefault(); save()" novalidate>
+    <fieldset class="settings-content-card org-card" [disabled]="!canEdit()">
+      <header>
+        <h2>Identidad</h2>
+        <p>Cómo se presenta la empresa en documentos, correos y el portal.</p>
+      </header>
+      <div class="org-logo">
+        <span class="org-logo__preview">
+          @if (draft().logo) {
+            <img [src]="draft().logo" alt="Logo de la organización" />
+          } @else {
+            {{ draft().tradeName.slice(0, 2).toUpperCase() || 'SL' }}
+          }
+        </span>
+        <div>
+          <b>Logo</b>
+          <small>PNG o JPG, cuadrado, de hasta 512 KB. Aparece en los PDF.</small>
+          <div class="org-logo__actions">
+            <label class="button"
+              >⇧ {{ draft().logo ? 'Cambiar' : 'Subir' }} logo<input
+                type="file"
+                accept="image/png,image/jpeg"
+                (change)="pickLogo($event)"
+            /></label>
+            @if (draft().logo) {
+              <button class="button" type="button" (click)="set('logo', '')">Quitar</button>
+            }
+          </div>
+          @if (logoError()) {
+            <small class="org-error">{{ logoError() }}</small>
+          }
+        </div>
+      </div>
+      <div class="org-grid">
+        <label [class.has-error]="error('tradeName')"
+          ><span>Nombre comercial <b>*</b></span
+          ><input
+            name="tradeName"
+            [ngModel]="draft().tradeName"
+            (ngModelChange)="set('tradeName', $event)"
+          />
+          @if (error('tradeName'); as message) {
+            <small class="org-error">{{ message }}</small>
+          }
+        </label>
+        <label
+          ><span>Código de organización</span
+          ><input [value]="store.profile().code" readonly class="is-readonly" />
+          <small class="org-hint">Identificador interno; no se puede cambiar.</small>
+        </label>
+        <label class="org-wide" [class.has-error]="error('website')"
+          ><span>Sitio web</span
+          ><input
+            name="website"
+            placeholder="https://"
+            [ngModel]="draft().website"
+            (ngModelChange)="set('website', $event)"
+          />
+          @if (error('website'); as message) {
+            <small class="org-error">{{ message }}</small>
+          }
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset class="settings-content-card org-card" [disabled]="!canEdit()">
+      <header>
+        <h2>Datos fiscales</h2>
+        <p>Se imprimen en facturas y comprobantes. Deben coincidir con tu constancia del SAT.</p>
+      </header>
+      <div class="org-grid">
+        <label class="org-wide" [class.has-error]="error('legalName')"
+          ><span>Razón social <b>*</b></span
+          ><input
+            name="legalName"
+            [ngModel]="draft().legalName"
+            (ngModelChange)="set('legalName', $event)"
+          />
+          @if (error('legalName'); as message) {
+            <small class="org-error">{{ message }}</small>
+          }
+        </label>
+        <label [class.has-error]="error('rfc')"
+          ><span>RFC <b>*</b></span
+          ><input
+            name="rfc"
+            maxlength="13"
+            class="is-upper"
+            [ngModel]="draft().rfc"
+            (ngModelChange)="set('rfc', $event.toUpperCase())"
+          />
+          @if (error('rfc'); as message) {
+            <small class="org-error">{{ message }}</small>
+          }
+        </label>
+        <label [class.has-error]="error('fiscalPostalCode')"
+          ><span>C.P. fiscal <b>*</b></span
+          ><input
+            name="fiscalPostalCode"
+            inputmode="numeric"
+            maxlength="5"
+            [ngModel]="draft().fiscalPostalCode"
+            (ngModelChange)="set('fiscalPostalCode', $event)"
+          />
+          @if (error('fiscalPostalCode'); as message) {
+            <small class="org-error">{{ message }}</small>
+          }
+        </label>
+        <label class="org-wide" [class.has-error]="error('taxRegime')"
+          ><span>Régimen fiscal <b>*</b></span
+          ><span class="settings-select"
+            ><select
+              name="taxRegime"
+              [ngModel]="draft().taxRegime"
+              (ngModelChange)="set('taxRegime', $event)"
+            >
+              <option value="">Seleccionar</option>
+              @for (regime of regimes; track regime.code) {
+                <option [value]="regime.code">{{ regime.label }}</option>
+              }</select
+            ><i>⌄</i></span
+          >
+          @if (error('taxRegime'); as message) {
+            <small class="org-error">{{ message }}</small>
+          }
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset class="settings-content-card org-card" [disabled]="!canEdit()">
+      <header>
+        <h2>Contacto y dirección</h2>
+        <p>Datos que ven los clientes para comunicarse con la empresa.</p>
+      </header>
+      <div class="org-grid">
+        <label [class.has-error]="error('email')"
+          ><span>Correo de contacto <b>*</b></span
+          ><input
+            name="email"
+            type="email"
+            [ngModel]="draft().email"
+            (ngModelChange)="set('email', $event)"
+          />
+          @if (error('email'); as message) {
+            <small class="org-error">{{ message }}</small>
+          }
+        </label>
+        <label [class.has-error]="error('phone')"
+          ><span>Teléfono</span
+          ><input
+            name="phone"
+            type="tel"
+            [ngModel]="draft().phone"
+            (ngModelChange)="set('phone', $event)"
+          />
+          @if (error('phone'); as message) {
+            <small class="org-error">{{ message }}</small>
+          }
+        </label>
+        <label class="org-wide"
+          ><span>Calle y número</span
+          ><input
+            name="street"
+            [ngModel]="draft().street"
+            (ngModelChange)="set('street', $event)"
+        /></label>
+        <label
+          ><span>Municipio o ciudad</span
+          ><input name="city" [ngModel]="draft().city" (ngModelChange)="set('city', $event)"
+        /></label>
+        <label
+          ><span>Estado</span
+          ><span class="settings-select"
+            ><select name="state" [ngModel]="draft().state" (ngModelChange)="set('state', $event)">
+              <option value="">Seleccionar</option>
+              @for (state of states; track state) {
+                <option [value]="state">{{ state }}</option>
+              }</select
+            ><i>⌄</i></span
+          ></label
+        >
+        <label [class.has-error]="error('postalCode')"
+          ><span>Código postal</span
+          ><input
+            name="postalCode"
+            inputmode="numeric"
+            maxlength="5"
+            [ngModel]="draft().postalCode"
+            (ngModelChange)="set('postalCode', $event)"
+          />
+          @if (error('postalCode'); as message) {
+            <small class="org-error">{{ message }}</small>
+          }
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset class="settings-content-card org-card" [disabled]="!canEdit()">
+      <header>
+        <h2>Facturación</h2>
+        <p>
+          Valores con los que se crean las facturas nuevas. La tasa de impuesto se elige en
+          <a routerLink="/settings/taxes">Impuestos</a>.
+        </p>
+      </header>
+      <div class="org-grid org-grid--3">
+        <label [class.has-error]="error('invoiceSeries')"
+          ><span>Serie <b>*</b></span
+          ><input
+            name="invoiceSeries"
+            maxlength="10"
+            class="is-upper"
+            [ngModel]="draft().invoiceSeries"
+            (ngModelChange)="set('invoiceSeries', $event.toUpperCase())"
+          />
+          @if (error('invoiceSeries'); as message) {
+            <small class="org-error">{{ message }}</small>
+          }
+        </label>
+        <label [class.has-error]="error('nextInvoiceNumber')"
+          ><span>Siguiente número <b>*</b></span
+          ><input
+            name="nextInvoiceNumber"
+            type="number"
+            min="1"
+            step="1"
+            [ngModel]="draft().nextInvoiceNumber"
+            (ngModelChange)="setNumber('nextInvoiceNumber', $event)"
+          />
+          @if (error('nextInvoiceNumber'); as message) {
+            <small class="org-error">{{ message }}</small>
+          }
+        </label>
+        <label [class.has-error]="error('paymentTermsDays')"
+          ><span>Días para pagar <b>*</b></span
+          ><input
+            name="paymentTermsDays"
+            type="number"
+            min="0"
+            max="120"
+            step="1"
+            [ngModel]="draft().paymentTermsDays"
+            (ngModelChange)="setNumber('paymentTermsDays', $event)"
+          />
+          @if (error('paymentTermsDays'); as message) {
+            <small class="org-error">{{ message }}</small>
+          }
+        </label>
+      </div>
+      <p class="org-folio">
+        Siguiente factura: <b>{{ nextFolio() }}</b> · vence
+        {{
+          draft().paymentTermsDays === 0
+            ? 'el mismo día'
+            : draft().paymentTermsDays + ' días después de emitirse'
+        }}
+      </p>
+    </fieldset>
+  </form>
+
+  <aside class="org-aside">
+    <article class="settings-content-card org-preview">
+      <header>
+        <h2>Vista previa del documento</h2>
+        <p>Así aparece el emisor en facturas, contratos y comprobantes.</p>
+      </header>
+      <div class="org-preview__doc">
+        <div class="org-preview__issuer">
+          @if (draft().logo) {
+            <img [src]="draft().logo" alt="" />
+          }
+          <div>
+            <b>{{ draft().tradeName || 'Nombre comercial' }}</b>
+            <small>{{ draft().legalName || 'Razón social' }} · RFC {{ draft().rfc || '—' }}</small>
+            <small>{{ previewAddress() || 'Dirección' }}</small>
+            <small>{{ draft().phone || 'Teléfono' }} · {{ draft().email || 'Correo' }}</small>
+          </div>
+        </div>
+        <div class="org-preview__title">
+          <b>FACTURA</b><small>{{ nextFolio() }}</small>
+        </div>
+      </div>
+      <p class="org-preview__regime">{{ regimeLabel() }}</p>
+    </article>
+    <article class="settings-content-card org-usage">
+      <h2>Dónde se usa</h2>
+      <ul>
+        <li>Encabezado de facturas, contratos, acuses y comprobantes PDF.</li>
+        <li>Variables de plantillas: nombre, teléfono, correo y dirección.</li>
+        <li>Folio y vencimiento de las facturas nuevas ({{ invoiceCount() }} emitidas).</li>
+      </ul>
+      <small
+        >Última modificación: {{ store.profile().updatedAt | date: 'dd MMM y, HH:mm' }} ·
+        {{ store.profile().updatedBy }}</small
+      >
+    </article>
+  </aside>
+</div>
+
+@if (canEdit() && (dirty() || saveError())) {
+  <footer class="org-savebar" role="status">
+    <span [class.org-error]="saveError()">{{ saveError() || 'Tienes cambios sin guardar.' }}</span>
+    <div>
+      <button class="button" type="button" (click)="discard()">Descartar</button>
+      <button class="button button--primary" type="button" [disabled]="!dirty()" (click)="save()">
+        Guardar cambios
+      </button>
+    </div>
+  </footer>
+}
+
+@if (toast()) {
+  <div class="settings-toast"><span>✓</span>{{ toast() }}</div>
+}

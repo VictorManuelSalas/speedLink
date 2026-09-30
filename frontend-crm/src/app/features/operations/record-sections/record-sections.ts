@@ -11,6 +11,8 @@ import {
 import { CrmAttachment } from '../../../core/models/customer';
 import { AttachmentPicker } from '../../../shared/attachment-picker';
 import { FileUploadModal } from '../../../shared/file-upload-modal';
+import { FileItem } from '../../../shared/file-item';
+import { FileViewer, downloadAttachment } from '../../../shared/file-viewer.service';
 import { InlineEditableDateField } from '../../../shared/inline-editable-date-field';
 import { LeadEmailFormValue, LeadEmailModal, LeadEmailSeed } from '../lead-email-modal/lead-email-modal';
 import { TemplateModule } from '../../../core/data-access/templates/template.model';
@@ -28,7 +30,7 @@ const SECTION_STYLES = `
 
 @Component({
   selector: 'app-record-notes-section',
-  imports: [AttachmentPicker, DatePipe],
+  imports: [AttachmentPicker, DatePipe, FileItem],
   templateUrl: './record-notes-section.html',
   styles: [SECTION_STYLES],
   styleUrl: './record-notes-section.scss',
@@ -94,6 +96,17 @@ export class RecordNotesSection {
   remove(id: string) {
     this.store.deleteNote(this.recordId(), id);
     this.menuId.set(null);
+  }
+  removeAttachment(noteId: string, fileId: string) {
+    const note = this.notes().find((item) => item.id === noteId);
+    if (!note) return;
+    this.store.updateNote(
+      this.recordId(),
+      noteId,
+      note.message,
+      note.pinned,
+      note.attachments.filter((file) => file.id !== fileId),
+    );
   }
   togglePin(id: string) {
     this.store.togglePinnedNote(this.recordId(), id);
@@ -302,6 +315,9 @@ export class RecordAttachmentsSection {
   readonly store = inject(OperationalStore);
   readonly upload = signal(false);
   readonly menuId = signal<string | null>(null);
+  /** Archivo con el Eliminar del menú pendiente de confirmar. */
+  readonly confirmId = signal<string | null>(null);
+  private readonly viewer = inject(FileViewer);
   files() {
     return this.store.attachmentsFor(this.recordId());
   }
@@ -312,9 +328,19 @@ export class RecordAttachmentsSection {
   remove(id: string) {
     this.store.deleteAttachment(this.recordId(), id);
     this.menuId.set(null);
+    this.confirmId.set(null);
+  }
+  view(file: CrmAttachment) {
+    this.menuId.set(null);
+    this.viewer.open(file, () => this.remove(file.id));
+  }
+  download(file: CrmAttachment) {
+    this.menuId.set(null);
+    void downloadAttachment(file);
   }
   menuClick(e: MouseEvent, id: string) {
     e.stopPropagation();
+    this.confirmId.set(null);
     this.menuId.set(this.menuId() === id ? null : id);
   }
   extension(v: string) {

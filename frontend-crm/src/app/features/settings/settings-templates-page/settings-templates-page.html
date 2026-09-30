@@ -9,43 +9,68 @@
         <h1>Plantillas</h1>
         <p>
           Contenido reutilizable para correo y SMS. Escribe <b>$</b> en el asunto o el cuerpo para
-          insertar un campo del módulo asociado.
+          insertar un campo del módulo asociado, incluidos sus campos personalizados.
         </p>
       </div>
     </div>
   </div>
-  <button class="button button--primary" (click)="create()">＋ Nueva plantilla</button>
+  @if (canEdit()) {
+    <button class="button button--primary" (click)="create()">＋ Nueva plantilla</button>
+  }
 </header>
 
 <section class="settings-metrics">
   <article class="settings-metric settings-metric--blue">
-    <span>Plantillas</span><strong>{{ templates().length }}</strong
-    ><small>{{ emailCount() }} de correo</small>
+    <span>Plantillas</span><strong>{{ totalCount() }}</strong
+    ><small>{{ emailCount() }} de correo · {{ totalCount() - emailCount() }} de SMS</small>
   </article>
   <article class="settings-metric settings-metric--green">
     <span>Activas</span><strong>{{ activeCount() }}</strong
     ><small>Disponibles al enviar</small>
   </article>
   <article class="settings-metric settings-metric--violet">
-    <span>Campos dinámicos</span><strong>{{ fieldGroups()[0].fields.length }}</strong
-    ><small>Según el módulo</small>
+    <span>Del sistema</span><strong>{{ systemCount() }}</strong
+    ><small>Las usa una función del CRM</small>
   </article>
 </section>
 
 <section class="settings-content-card">
-  <header class="settings-content-card__header">
+  <header class="settings-content-card__header template-toolbar">
     <div>
       <h2>Plantillas</h2>
-      <p>{{ templates().length }} {{ templates().length === 1 ? 'plantilla' : 'plantillas' }}</p>
+      <p>
+        {{ templates().length }} {{ templates().length === 1 ? 'plantilla' : 'plantillas' }}
+        @if (filtersActive()) {
+          · <button class="link-button" type="button" (click)="clearFilters()">Quitar filtros</button>
+        }
+      </p>
     </div>
-    <label class="settings-search"
-      ><span>⌕</span
-      ><input
-        type="search"
-        placeholder="Buscar plantilla…"
-        [ngModel]="query()"
-        (ngModelChange)="query.set($event)"
-    /></label>
+    <div class="template-filters">
+      <label class="settings-search"
+        ><span>⌕</span
+        ><input
+          type="search"
+          placeholder="Buscar plantilla…"
+          [ngModel]="query()"
+          (ngModelChange)="query.set($event)"
+      /></label>
+      <select aria-label="Canal" [ngModel]="channelFilter()" (ngModelChange)="channelFilter.set($event)">
+        <option value="all">Todos los canales</option>
+        <option value="email">Correo</option>
+        <option value="sms">SMS / WhatsApp</option>
+      </select>
+      <select aria-label="Módulo" [ngModel]="moduleFilter()" (ngModelChange)="moduleFilter.set($event)">
+        <option value="all">Todos los módulos</option>
+        @for (module of modules(); track module.value) {
+          <option [value]="module.value">{{ module.value ? module.label : 'Generales' }}</option>
+        }
+      </select>
+      <select aria-label="Estado" [ngModel]="statusFilter()" (ngModelChange)="statusFilter.set($event)">
+        <option value="all">Todos los estados</option>
+        <option value="ACTIVE">Activas</option>
+        <option value="DRAFT">Borradores</option>
+      </select>
+    </div>
   </header>
 
   <div class="template-list">
@@ -55,23 +80,38 @@
           channelLabel(template.channel)
         }}</span>
         <div class="template-main">
-          <b>{{ template.name }}</b>
+          <b
+            >{{ template.name }}
+            @if (usageOf(template); as usage) {
+              <em class="template-system" [title]="'La usa ' + usage">Sistema</em>
+            }</b
+          >
           <small>{{ template.subject || template.body }}</small>
         </div>
         <span class="template-tag">{{ moduleLabel(template.module) }}</span>
         <span class="template-tag">{{ template.format === 'html' ? 'HTML' : 'Texto' }}</span>
-        <span class="template-status template-status--{{ template.status | lowercase }}">{{
+        <span class="template-status template-status--{{ template.status === 'ACTIVE' ? 'active' : 'draft' }}">{{
           template.status === 'ACTIVE' ? 'Activa' : 'Borrador'
         }}</span>
         <small class="template-date">{{ template.updatedAt | date: 'dd MMM y' }}</small>
         <div class="template-actions">
-          <button type="button" (click)="edit(template)">Editar</button>
-          <button type="button" (click)="duplicate(template)">Duplicar</button>
-          <button class="danger" type="button" (click)="remove(template)">Eliminar</button>
+          <button type="button" (click)="edit(template)">{{ canEdit() ? 'Editar' : 'Ver' }}</button>
+          @if (canEdit()) {
+            <button type="button" (click)="duplicate(template)">Duplicar</button>
+            <button
+              class="danger"
+              type="button"
+              [disabled]="!!usageOf(template)"
+              [attr.title]="usageOf(template) ? 'La usa ' + usageOf(template) : null"
+              (click)="askDelete(template)"
+            >
+              Eliminar
+            </button>
+          }
         </div>
       </article>
     } @empty {
-      <p class="template-empty">No hay plantillas que coincidan con la búsqueda.</p>
+      <p class="template-empty">No hay plantillas que coincidan con los filtros.</p>
     }
   </div>
 </section>
@@ -87,8 +127,15 @@
         <button class="icon-button" type="button" aria-label="Cerrar" (click)="close()">×</button>
       </header>
 
+      @if (editingUsage(); as usage) {
+        <p class="template-usage" role="status">
+          La usa <b>{{ usage }}</b>. Puedes editar su texto; si la dejas en borrador, esa función
+          tomará otra plantilla activa del mismo módulo.
+        </p>
+      }
+
       <div class="template-editor__body">
-        <div class="template-form">
+        <fieldset class="template-form" [disabled]="!canEdit()">
           <label
             ><span>Nombre *</span>
             <input
@@ -109,7 +156,7 @@
             <label
               ><span>Módulo asociado</span>
               <select [ngModel]="draft().module" (ngModelChange)="setModule($event)">
-                @for (module of modules; track module.value) {
+                @for (module of modules(); track module.value) {
                   <option [value]="module.value">{{ module.label }}</option>
                 }
               </select></label
@@ -164,6 +211,7 @@
             <textarea
               #bodyInput
               rows="12"
+              spellcheck="false"
               [ngModel]="draft().body"
               (ngModelChange)="update('body', $event)"
               (keydown)="handleKey($event)"
@@ -198,11 +246,16 @@
 
           @if (unknownTokens().length) {
             <p class="template-warning">
-              Estas variables no existen para el módulo elegido y saldrán vacías:
-              {{ unknownTokens().join(', ') }}
+              Estas variables no existen para el módulo elegido y saldrían vacías:
+              {{ unknownTokens().join(', ') }}.
+              {{
+                draft().status === 'ACTIVE'
+                  ? 'Corrígelas para poder guardarla activa, o guárdala como borrador.'
+                  : 'Como borrador sí se puede guardar.'
+              }}
             </p>
           }
-        </div>
+        </fieldset>
 
         <aside class="template-preview">
           <header>
@@ -215,23 +268,84 @@
               <b>{{ preview().subject || '—' }}</b>
             </div>
           }
-          <pre>{{ preview().body || 'El contenido aparecerá aquí.' }}</pre>
+          @if (draft().format === 'html' && draft().channel === 'email' && preview().body.trim()) {
+            <iframe
+              class="preview-html"
+              title="Vista previa del correo"
+              sandbox=""
+              [srcdoc]="previewHtml()"
+            ></iframe>
+          } @else {
+            <pre>{{ preview().body || 'El contenido aparecerá aquí.' }}</pre>
+          }
+          @if (draft().channel === 'sms' && preview().body) {
+            <p class="preview-segments" [class.is-multi]="segments().segments > 1">
+              <b>{{ segments().segments }} SMS</b> · {{ segments().length }} caracteres ·
+              {{ segments().encoding }}
+              @if (segments().encoding === 'Unicode') {
+                <small>Por acentos o emojis cada SMS admite 70 caracteres en lugar de 160.</small>
+              }
+            </p>
+          }
         </aside>
       </div>
 
+      @if (saveError()) {
+        <p class="template-error" role="alert">{{ saveError() }}</p>
+      }
       <footer>
-        <button class="button" type="button" (click)="close()">Cancelar</button>
-        <button
-          class="button button--primary"
-          type="button"
-          [disabled]="!canSave()"
-          (click)="save()"
-        >
-          Guardar plantilla
+        @if (draft().channel === 'email' && draft().subject && draft().body) {
+          <button class="button template-test" type="button" (click)="sendTest()">
+            ✉ Enviarme una prueba
+          </button>
+        }
+        <button class="button" type="button" (click)="close()">
+          {{ canEdit() ? 'Cancelar' : 'Cerrar' }}
         </button>
+        @if (canEdit()) {
+          <button class="button button--primary" type="button" (click)="save()">
+            {{ isNew() ? 'Crear plantilla' : 'Guardar cambios' }}
+          </button>
+        }
       </footer>
+
+      @if (confirmDiscard()) {
+        <div class="template-discard" role="alertdialog" aria-modal="true">
+          <b>¿Descartar los cambios?</b>
+          <p>Modificaste la plantilla y no la has guardado.</p>
+          <div>
+            <button class="button" type="button" (click)="confirmDiscard.set(false)">Seguir editando</button>
+            <button class="button button--danger" type="button" (click)="close(true)">Descartar</button>
+          </div>
+        </div>
+      }
     </section>
   </div>
+}
+
+@if (deleting(); as template) {
+  <button class="confirm-backdrop" type="button" aria-label="Cancelar" (click)="deleting.set(null)"></button>
+  <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+    <span class="confirm-dialog__icon">⊘</span>
+    <div>
+      <span class="confirm-dialog__eyebrow">PLANTILLAS</span>
+      <h2>¿Eliminar «{{ template.name }}»?</h2>
+      <p>Dejará de aparecer al redactar correos y SMS. Los mensajes ya enviados no cambian.</p>
+    </div>
+    <footer>
+      <button class="button" type="button" (click)="deleting.set(null)">No, cancelar</button>
+      <button class="button button--danger" type="button" (click)="confirmDelete()">Sí, eliminar</button>
+    </footer>
+  </section>
+}
+
+@if (testSeed(); as seed) {
+  <app-lead-email-modal
+    [seed]="seed"
+    [composeKey]="testKey()"
+    (closed)="testSeed.set(null)"
+    (submitted)="testSubmitted($event.value, $event.draft)"
+  />
 }
 
 @if (toast()) {

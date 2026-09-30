@@ -1,0 +1,313 @@
+@if (exists()) {
+  <header class="settings-header settings-header--section">
+    <div>
+      <div class="breadcrumbs">
+        <a routerLink="/settings">Ajustes</a><b>›</b><a routerLink="/settings/modules">Módulos</a
+        ><b>›</b><span>{{ title() }}</span>
+      </div>
+      <div class="settings-title">
+        <span class="settings-icon settings-icon--large"><img [src]="icon()" alt="" /></span>
+        <div>
+          <h1>
+            {{ title() }}
+            <em class="mod-badge mod-badge--{{ isCustom() ? 'custom' : 'native' }}">{{
+              isCustom() ? 'Personalizado' : 'Sistema'
+            }}</em>
+          </h1>
+          <p>
+            {{ recordCount() }} registro(s) ·
+            <a [routerLink]="listRoute()">Abrir el módulo ›</a>
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="mod-header-actions">
+      <label class="mod-menu-toggle" [class.is-locked]="!canEdit()"
+        ><input type="checkbox" [checked]="inMenu()" [disabled]="!canEdit()" (change)="toggleMenu()" /><i></i
+        ><span>{{ inMenu() ? 'En el menú' : 'Oculto del menú' }}</span></label
+      >
+      @if (isCustom() && canEdit()) {
+        <button class="button" type="button" (click)="editingModule.set(true)">✎ Editar módulo</button>
+        <button class="button mod-danger" type="button" (click)="confirmName.set(''); deletingModule.set(true)">
+          ⊘ Eliminar
+        </button>
+      }
+    </div>
+  </header>
+
+  @if (justCreated && isCustom()) {
+    <p class="mod-notice" role="status">
+      Módulo creado. Agrégale campos y después
+      <a routerLink="/settings/roles">da permiso a los roles</a> que deban usarlo: por ahora solo lo ve el
+      Administrador.
+    </p>
+  }
+
+  <div class="mod-detail-layout">
+    <section class="settings-content-card">
+      <header class="settings-content-card__header">
+        <div>
+          <h2>Campos personalizados</h2>
+          <p>
+            {{ customFields().length }} campo(s). Aparecen en el formulario de alta y en la ficha de
+            cada registro{{ native()?.storage === 'card' ? ', en la tarjeta «Campos personalizados»' : '' }}.
+          </p>
+        </div>
+        @if (canEdit()) {
+          <button class="button button--primary" type="button" (click)="openCreateField()">
+            ＋ Agregar campo
+          </button>
+        }
+      </header>
+      @for (field of customFields(); track field.key; let first = $first; let last = $last) {
+        <article class="mod-field">
+          @if (canEdit()) {
+            <span class="mod-field__order">
+              <button type="button" aria-label="Subir" [disabled]="first" (click)="move(field, -1)">▲</button>
+              <button type="button" aria-label="Bajar" [disabled]="last" (click)="move(field, 1)">▼</button>
+            </span>
+          }
+          <span class="mod-field__main"
+            ><b
+              >{{ field.label }}
+              @if (field.required) {
+                <em class="mod-required">Obligatorio</em>
+              }
+              @if (field.showInList) {
+                <em class="mod-inlist">En la lista</em>
+              }</b
+            ><small
+              >{{ typeLabel(field.type) }}
+              @if (field.type === 'picklist') {
+                · {{ field.options.length }} opción(es)
+              }
+              @if (field.type === 'lookup') {
+                → {{ lookupLabel(field.lookupModule) }}
+              }
+              · <code>{{ field.key }}</code></small
+            ></span
+          >
+          @if (canEdit()) {
+            <span class="mod-field__actions">
+              <button type="button" class="button" (click)="openEditField(field)">Editar</button>
+              <button type="button" class="button mod-danger" (click)="deletingField.set(field)">
+                Eliminar
+              </button>
+            </span>
+          }
+        </article>
+      } @empty {
+        <div class="settings-empty">
+          <span>＋</span>
+          <h2>Sin campos personalizados</h2>
+          <p>Agrega campos para capturar datos propios de tu operación.</p>
+        </div>
+      }
+    </section>
+
+    <aside class="settings-content-card mod-system">
+      <h2>Campos del sistema</h2>
+      <p>Vienen con el módulo; no se pueden quitar.</p>
+      <ul>
+        @for (field of systemFields(); track field.label) {
+          <li>
+            <b>{{ field.label }}</b
+            ><small>{{ field.type }}{{ field.required ? ' · obligatorio' : '' }}</small>
+          </li>
+        }
+      </ul>
+    </aside>
+  </div>
+
+  @if (editor(); as current) {
+    <button class="settings-modal-backdrop" aria-label="Cerrar" (click)="editor.set(null)"></button>
+    <section class="settings-modal mod-modal" role="dialog" aria-modal="true">
+      <header>
+        <div>
+          <span>{{ title() }}</span>
+          <h2>{{ current.key ? 'Editar campo' : 'Nuevo campo' }}</h2>
+          <p>
+            {{
+              current.key
+                ? 'El tipo y el nombre de API no cambian: los registros ya guardan datos con ese formato.'
+                : 'Elige el tipo con cuidado: después no se puede cambiar.'
+            }}
+          </p>
+        </div>
+        <button class="icon-button" type="button" aria-label="Cerrar" (click)="editor.set(null)">×</button>
+      </header>
+      <form (submit)="saveField($event)">
+        <div class="settings-form-grid">
+          <label
+            ><span>Etiqueta <b>*</b></span
+            ><input
+              name="label"
+              placeholder="Número de medidor"
+              [ngModel]="fieldDraft().label"
+              (ngModelChange)="setField('label', $event)"
+            />
+            <small class="mod-hint">Nombre de API: <code>{{ current.key ?? apiPreview() }}</code></small>
+          </label>
+          <label
+            ><span>Tipo <b>*</b></span
+            ><span class="settings-select"
+              ><select
+                name="type"
+                [disabled]="!!current.key"
+                [ngModel]="fieldDraft().type"
+                (ngModelChange)="setField('type', $event)"
+              >
+                @for (type of fieldTypes; track type.value) {
+                  <option [value]="type.value">{{ type.label }}</option>
+                }</select
+              ><i>⌄</i></span
+            >
+            <small class="mod-hint">{{ typeHint() }}</small>
+          </label>
+          @if (fieldDraft().type === 'picklist') {
+            <label class="settings-field--wide"
+              ><span>Opciones <b>*</b> <small>(una por línea)</small></span
+              ><textarea
+                rows="5"
+                name="options"
+                placeholder="Residencial&#10;Comercial&#10;Industrial"
+                [ngModel]="optionsText()"
+                (ngModelChange)="optionsText.set($event); fieldError.set('')"
+              ></textarea>
+            </label>
+          }
+          @if (fieldDraft().type === 'lookup') {
+            <label class="settings-field--wide"
+              ><span>Busca en el módulo <b>*</b></span
+              ><span class="settings-select"
+                ><select
+                  name="lookupModule"
+                  [disabled]="!!current.key"
+                  [ngModel]="fieldDraft().lookupModule ?? ''"
+                  (ngModelChange)="setField('lookupModule', $event)"
+                >
+                  <option value="">Seleccionar</option>
+                  @for (target of lookupTargets(); track target.key) {
+                    <option [value]="target.key">{{ target.label }}</option>
+                  }</select
+                ><i>⌄</i></span
+              ></label
+            >
+          }
+          <label class="settings-field--wide"
+            ><span>Texto de ayuda</span
+            ><input
+              name="helpText"
+              maxlength="200"
+              placeholder="Se muestra debajo del campo"
+              [ngModel]="fieldDraft().helpText"
+              (ngModelChange)="setField('helpText', $event)"
+          /></label>
+          <div class="settings-field--wide mod-checks">
+            <label
+              ><input
+                type="checkbox"
+                name="required"
+                [ngModel]="fieldDraft().required"
+                (ngModelChange)="setField('required', $event)"
+              /><span><b>Obligatorio</b><small>No se puede guardar un registro nuevo sin este dato.</small></span></label
+            >
+            <label
+              ><input
+                type="checkbox"
+                name="showInList"
+                [ngModel]="fieldDraft().showInList"
+                (ngModelChange)="setField('showInList', $event)"
+              /><span><b>Mostrar en la lista</b><small>Agrega una columna en la lista del módulo.</small></span></label
+            >
+          </div>
+        </div>
+        @if (fieldError()) {
+          <p class="mod-error" role="alert">{{ fieldError() }}</p>
+        }
+        <footer>
+          <button type="button" class="button" (click)="editor.set(null)">Cancelar</button
+          ><button class="button button--primary" type="submit">
+            {{ current.key ? 'Guardar' : 'Agregar campo' }}
+          </button>
+        </footer>
+      </form>
+    </section>
+  }
+
+  @if (deletingField(); as field) {
+    <button class="confirm-backdrop" type="button" aria-label="Cancelar" (click)="deletingField.set(null)"></button>
+    <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+      <span class="confirm-dialog__icon">⊘</span>
+      <div>
+        <span class="confirm-dialog__eyebrow">{{ title().toUpperCase() }}</span>
+        <h2>¿Eliminar el campo «{{ field.label }}»?</h2>
+        <p>
+          @if (usage(field); as used) {
+            <b>{{ used }} registro(s)</b> tienen datos en este campo; dejarán de mostrarse.
+          } @else {
+            Ningún registro tiene datos en este campo.
+          }
+          Las plantillas que usen <code>${{ '{' }}…{{ field.key }}{{ '}' }}</code> lo mostrarán vacío.
+        </p>
+      </div>
+      <footer>
+        <button class="button" type="button" (click)="deletingField.set(null)">No, cancelar</button>
+        <button class="button button--danger" type="button" (click)="confirmDeleteField()">
+          Sí, eliminar
+        </button>
+      </footer>
+    </section>
+  }
+
+  @if (editingModule() && custom(); as module) {
+    <app-module-form-dialog [module]="module" (saved)="moduleSaved()" (closed)="editingModule.set(false)" />
+  }
+
+  @if (deletingModule() && custom(); as module) {
+    <button class="confirm-backdrop" type="button" aria-label="Cancelar" (click)="deletingModule.set(false)"></button>
+    <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+      <span class="confirm-dialog__icon">⊘</span>
+      <div>
+        <span class="confirm-dialog__eyebrow">MÓDULOS</span>
+        <h2>¿Eliminar el módulo {{ module.plural }}?</h2>
+        <p>
+          Se eliminarán sus <b>{{ recordCount() }} registro(s)</b> y sus campos, y desaparecerá del menú.
+          Escribe <b>{{ module.plural }}</b> para confirmar.
+        </p>
+        <input
+          class="mod-confirm-input"
+          [ngModel]="confirmName()"
+          (ngModelChange)="confirmName.set($event)"
+          [attr.aria-label]="'Escribe ' + module.plural"
+        />
+        <div class="confirm-dialog__warning">
+          <span>!</span>
+          <p>Esta acción no se puede deshacer.</p>
+        </div>
+      </div>
+      <footer>
+        <button class="button" type="button" (click)="deletingModule.set(false)">No, cancelar</button>
+        <button
+          class="button button--danger"
+          type="button"
+          [disabled]="confirmName().trim() !== module.plural"
+          (click)="deleteModule()"
+        >
+          Eliminar módulo
+        </button>
+      </footer>
+    </section>
+  }
+
+  @if (toast()) {
+    <div class="settings-toast"><span>✓</span>{{ toast() }}</div>
+  }
+} @else {
+  <section class="settings-empty">
+    <span>?</span>
+    <h2>Módulo no encontrado</h2>
+    <p>Pudo haber sido eliminado.</p>
+    <a class="button button--primary" routerLink="/settings/modules">Volver a módulos</a>
+  </section>
+}

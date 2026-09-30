@@ -1,4 +1,4 @@
-<div class="picklist" [class.open]="open()" [class.disabled]="disabled()">
+<div #root class="picklist" [class.open]="open()" [class.disabled]="disabled()">
   <button
     class="trigger"
     type="button"
@@ -16,7 +16,8 @@
     <div
       class="menu"
       role="listbox"
-      [class.menu--upward]="openUpward()"
+      [appFloatingPanel]="root"
+      [matchWidth]="true"
       (click)="$event.stopPropagation()"
     >
       @if (showSearch()) {

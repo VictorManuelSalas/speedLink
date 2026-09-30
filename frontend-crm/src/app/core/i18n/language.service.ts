@@ -1,5 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { SessionContext } from '../auth/session-context';
+import { AccessStore } from '../auth/access-store';
 
 export type AppLanguage = 'es' | 'en';
 
@@ -517,6 +518,7 @@ const ENGLISH_PHRASES: ReadonlyArray<readonly [string, string]> = [
 @Injectable({ providedIn: 'root' })
 export class LanguageService {
   private readonly session = inject(SessionContext);
+  private readonly access = inject(AccessStore);
   readonly language = signal<AppLanguage>(this.readStoredLanguage());
 
   constructor() {
@@ -541,7 +543,8 @@ export class LanguageService {
     this.language.set(language);
     localStorage.setItem('speedlink-language', language);
     document.documentElement.lang = language === 'en' ? 'en' : 'es-MX';
-    this.session.user.update((user) => (user ? { ...user, preferredLanguage: language } : user));
+    const userId = this.session.user()?.id;
+    if (userId) this.access.setPreferredLanguage(userId, language);
   }
 
   locale(): string {

@@ -1,0 +1,335 @@
+<section class="access">
+  <!-- Avisos: lo que hay que resolver antes de dejar el equipo operando. -->
+  @if (access().credentialsNeedRotation) {
+    <div class="access-alert access-alert--danger" role="status">
+      <b>Cambia las credenciales de este equipo.</b>
+      <span>Se devolvió o reasignó: el cliente o técnico anterior conoce su acceso.</span>
+      @if (canEdit()) {
+        <button type="button" (click)="confirmRotation()">Ya se cambiaron</button>
+      }
+    </div>
+  }
+  @if (access().factoryPasswordChanged === false) {
+    <div class="access-alert access-alert--danger" role="status">
+      <b>Sigue con la contraseña de fábrica.</b>
+      <span>Cualquiera con el manual del modelo puede entrar a este equipo.</span>
+    </div>
+  } @else if (access().factoryPasswordChanged === null && installed()) {
+    <div class="access-alert access-alert--warning" role="status">
+      <b>No se ha verificado la contraseña de fábrica.</b>
+      <span>Confirma abajo si ya se cambió al instalarlo.</span>
+    </div>
+  }
+  @if (access().wifiNeedsReset) {
+    <div class="access-alert access-alert--warning" role="status">
+      <b>Restablece el WiFi antes de volver a instalarlo.</b>
+      <span>Las redes guardadas son del cliente anterior.</span>
+      @if (canEdit()) {
+        <button type="button" (click)="confirmWifiReset()">Ya se restableció</button>
+      }
+    </div>
+  }
+
+  <div class="access-grid">
+    <article class="card access-card">
+      <header>
+        <div>
+          <h2>Acceso de administración</h2>
+          <p>Con qué se entra a configurar el equipo.</p>
+        </div>
+      </header>
+      <fieldset class="access-form" [disabled]="!canEdit()">
+        <label [class.has-error]="!!ipConflict()"
+          ><span>IP de gestión</span
+          ><input
+            name="ip"
+            inputmode="decimal"
+            placeholder="10.20.30.40"
+            [ngModel]="ip()"
+            (ngModelChange)="ip.set($event); adminError.set('')"
+          />
+          @if (ipConflict(); as other) {
+            <small class="access-error">Ya la usa el equipo {{ other }}.</small>
+          }
+        </label>
+        <label
+          ><span>Puerto</span
+          ><input
+            name="port"
+            type="number"
+            min="1"
+            max="65535"
+            placeholder="80"
+            [ngModel]="port()"
+            (ngModelChange)="port.set($event?.toString() ?? ''); adminError.set('')"
+        /></label>
+        <label
+          ><span>Usuario</span
+          ><input
+            name="username"
+            autocomplete="off"
+            [ngModel]="username()"
+            (ngModelChange)="username.set($event); adminError.set('')"
+        /></label>
+        <label
+          ><span>Firmware</span
+          ><input
+            name="firmware"
+            placeholder="v2.1.3"
+            [ngModel]="firmware()"
+            (ngModelChange)="firmware.set($event); adminError.set('')"
+        /></label>
+        <label
+          ><span>MAC</span><input [value]="record()['macAddress'] || '—'" readonly class="is-readonly"
+        /></label>
+      </fieldset>
+      @if (adminError()) {
+        <p class="access-error access-error--block" role="alert">{{ adminError() }}</p>
+      }
+      @if (canEdit() && adminDirty()) {
+        <div class="access-actions">
+          <button class="button" type="button" (click)="resetAdmin()">Descartar</button>
+          <button class="button button--primary" type="button" (click)="saveAdmin()">Guardar</button>
+        </div>
+      }
+
+      <div class="access-secret">
+        <app-secret-field
+          label="Contraseña de administración"
+          [credential]="{ equipmentId: equipmentId(), kind: 'admin' }"
+          [allowed]="canSeeCredentials()"
+          [canChange]="canEdit()"
+          deniedMessage="Tu rol no puede ver credenciales de equipos."
+        />
+      </div>
+
+      <div class="access-factory">
+        <span>¿Se cambió la contraseña de fábrica?</span>
+        <div role="radiogroup" aria-label="Contraseña de fábrica">
+          <button
+            type="button"
+            [class.is-on]="access().factoryPasswordChanged === true"
+            [disabled]="!canEdit()"
+            (click)="setFactoryChanged(true)"
+          >
+            Sí, ya se cambió
+          </button>
+          <button
+            type="button"
+            class="is-danger"
+            [class.is-on]="access().factoryPasswordChanged === false"
+            [disabled]="!canEdit()"
+            (click)="setFactoryChanged(false)"
+          >
+            No, sigue la de fábrica
+          </button>
+        </div>
+        @if (access().passwordChangedAt) {
+          <small>Último cambio: {{ access().passwordChangedAt | date: 'dd MMM y, HH:mm' }}</small>
+        }
+      </div>
+    </article>
+
+    <article class="card access-card">
+      <header>
+        <div>
+          <h2>Valores de fábrica del modelo</h2>
+          <p>Iguales en todas las unidades de <b>{{ modelLabel() }}</b>.</p>
+        </div>
+        @if (canEdit() && !editingDefaults()) {
+          <button class="button" type="button" (click)="openDefaults()">
+            {{ defaults() ? 'Editar' : 'Agregar' }}
+          </button>
+        }
+      </header>
+      @if (editingDefaults()) {
+        <div class="access-form">
+          <label
+            ><span>Usuario de fábrica</span
+            ><input [ngModel]="defaultsUser()" (ngModelChange)="defaultsUser.set($event)"
+          /></label>
+          <label
+            ><span>IP de fábrica</span
+            ><input [ngModel]="defaultsIp()" (ngModelChange)="defaultsIp.set($event)"
+          /></label>
+          <label class="access-wide"
+            ><span>Nota</span
+            ><input
+              placeholder="p. ej. La contraseña viene en la etiqueta"
+              [ngModel]="defaultsNote()"
+              (ngModelChange)="defaultsNote.set($event)"
+          /></label>
+        </div>
+        @if (defaultsError()) {
+          <p class="access-error access-error--block" role="alert">{{ defaultsError() }}</p>
+        }
+        <div class="access-actions">
+          <button class="button" type="button" (click)="editingDefaults.set(false)">Cancelar</button>
+          <button class="button button--primary" type="button" (click)="saveDefaults()">Guardar</button>
+        </div>
+      } @else if (defaults(); as values) {
+        <dl class="access-list">
+          <div><dt>Usuario</dt><dd>{{ values.username || '—' }}</dd></div>
+          <div><dt>IP</dt><dd>{{ values.ip || '—' }}</dd></div>
+          @if (values.note) {
+            <div><dt>Nota</dt><dd>{{ values.note }}</dd></div>
+          }
+        </dl>
+        @if (canEdit()) {
+          <button class="button access-use" type="button" (click)="useFactoryValues()">
+            Usar usuario e IP de fábrica
+          </button>
+        }
+      } @else {
+        <p class="access-empty">Sin valores de fábrica registrados para este modelo.</p>
+      }
+      <p class="access-hint">
+        La contraseña de fábrica no se guarda aquí: si el equipo la conserva, es la contraseña real y
+        debe cambiarse.
+      </p>
+    </article>
+  </div>
+
+  <article class="card access-card">
+    <header>
+      <div>
+        <h2>Redes WiFi del cliente</h2>
+        <p>Nombre, banda y seguridad de cada red. La contraseña la guarda el servidor.</p>
+      </div>
+      @if (canEdit()) {
+        <button class="button button--primary" type="button" (click)="openWifi()">＋ Agregar red</button>
+      }
+    </header>
+    @for (network of access().wifi; track network.id) {
+      <div class="access-wifi" [class.is-off]="!network.enabled">
+        <div class="access-wifi__main">
+          <b>{{ network.ssid }}</b>
+          <small
+            >{{ bandLabel(network.band) }} · {{ securityLabel(network.security) }}
+            {{ network.enabled ? '' : '· Desactivada' }}</small
+          >
+        </div>
+        @if (network.security !== 'open') {
+          <app-secret-field
+            class="access-wifi__secret"
+            label="Contraseña"
+            [credential]="{ equipmentId: equipmentId(), kind: 'wifi', networkId: network.id }"
+            [allowed]="canSeeWifi()"
+            [canChange]="canEdit()"
+            deniedMessage="Tu rol no puede ver el WiFi de los clientes."
+          />
+        } @else {
+          <small class="access-open">Red abierta: sin contraseña.</small>
+        }
+        @if (canEdit()) {
+          <div class="access-wifi__actions">
+            <button type="button" class="button" (click)="openWifi(network)">Editar</button>
+            <button
+              type="button"
+              class="button"
+              [disabled]="!vault.available"
+              title="Avisa al cliente con la plantilla «Cambio de contraseña WiFi». Disponible cuando se conecte el servidor de credenciales."
+            >
+              Avisar al cliente
+            </button>
+            <button type="button" class="button access-danger" (click)="removing.set(network)">Quitar</button>
+          </div>
+        }
+      </div>
+    } @empty {
+      <p class="access-empty">Sin redes registradas.</p>
+    }
+  </article>
+
+  @if (access().updatedAt) {
+    <p class="access-meta">
+      Última modificación: {{ access().updatedAt | date: 'dd MMM y, HH:mm' }} · {{ access().updatedBy }}
+    </p>
+  }
+</section>
+
+@if (wifiEditor(); as editor) {
+  <button class="confirm-backdrop" type="button" aria-label="Cerrar" (click)="wifiEditor.set(null)"></button>
+  <section class="confirm-dialog access-dialog" role="dialog" aria-modal="true">
+    <div>
+      <span class="confirm-dialog__eyebrow">RED WIFI</span>
+      <h2>{{ editor.id ? 'Editar red' : 'Nueva red' }}</h2>
+      <form class="access-form access-form--dialog" (submit)="saveWifi($event)">
+        <label class="access-wide"
+          ><span>Nombre de la red (SSID)</span
+          ><input
+            name="ssid"
+            maxlength="32"
+            placeholder="SpeedLink_Rubi"
+            [ngModel]="wifiDraft().ssid"
+            (ngModelChange)="setWifi('ssid', $event)"
+          />
+          <small class="access-hint" [class.access-error]="ssidBytes() > 32"
+            >{{ ssidBytes() }}/32 bytes (los acentos y la ñ cuentan doble)</small
+          >
+        </label>
+        <label
+          ><span>Banda</span
+          ><select name="band" [ngModel]="wifiDraft().band" (ngModelChange)="setWifi('band', $event)">
+            @for (band of bands; track band.value) {
+              <option [value]="band.value">{{ band.label }}</option>
+            }
+          </select></label
+        >
+        <label
+          ><span>Seguridad</span
+          ><select name="security" [ngModel]="wifiDraft().security" (ngModelChange)="setWifi('security', $event)">
+            @for (security of securities; track security.value) {
+              <option [value]="security.value">{{ security.label }}</option>
+            }
+          </select></label
+        >
+        <label class="access-check access-wide"
+          ><input
+            type="checkbox"
+            name="enabled"
+            [ngModel]="wifiDraft().enabled"
+            (ngModelChange)="setWifi('enabled', $event)"
+          />Red activa</label
+        >
+        @if (wifiDraft().security === 'open') {
+          <p class="access-warning access-wide">
+            Una red abierta deja que cualquiera cerca use el servicio del cliente.
+          </p>
+        } @else {
+          <p class="access-hint access-wide">
+            La contraseña (8 a 63 caracteres) se define con «Cambiar» en la red, cuando se conecte el
+            servidor de credenciales.
+          </p>
+        }
+        @if (wifiError()) {
+          <p class="access-error access-error--block access-wide" role="alert">{{ wifiError() }}</p>
+        }
+        <footer class="access-wide">
+          <button class="button" type="button" (click)="wifiEditor.set(null)">Cancelar</button>
+          <button class="button button--primary" type="submit">{{ editor.id ? 'Guardar' : 'Agregar' }}</button>
+        </footer>
+      </form>
+    </div>
+  </section>
+}
+
+@if (removing(); as network) {
+  <button class="confirm-backdrop" type="button" aria-label="Cancelar" (click)="removing.set(null)"></button>
+  <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+    <span class="confirm-dialog__icon">⊘</span>
+    <div>
+      <span class="confirm-dialog__eyebrow">RED WIFI</span>
+      <h2>¿Quitar la red «{{ network.ssid }}»?</h2>
+      <p>Solo se quita del CRM; la red sigue configurada en el equipo hasta que se cambie ahí.</p>
+    </div>
+    <footer>
+      <button class="button" type="button" (click)="removing.set(null)">No, cancelar</button>
+      <button class="button button--danger" type="button" (click)="confirmRemove()">Sí, quitar</button>
+    </footer>
+  </section>
+}
+
+@if (toast()) {
+  <div class="access-toast"><span>✓</span>{{ toast() }}</div>
+}

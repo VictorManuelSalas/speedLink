@@ -1,4 +1,4 @@
-<div class="date-field" [class.date-field--compact]="compact()">
+<div #field class="date-field" [class.date-field--compact]="compact()">
   <span class="date-field__label">{{ label() }}</span>
   <div class="date-field__value">
     <b [class.is-placeholder]="!formattedValue()">{{ formattedValue() || placeholder() }}</b>
@@ -16,7 +16,12 @@
   </div>
 
   @if (editing()) {
-    <div class="calendar" role="dialog" aria-label="Seleccionar fecha">
+    <div
+      class="calendar"
+      [appFloatingPanel]="field"
+      [align]="compact() ? 'end' : 'start'"
+      [disableBelow]="520"
+      role="dialog" aria-label="Seleccionar fecha">
       <header>
         <button type="button" aria-label="Mes anterior" (click)="changeMonth(-1)">‹</button>
         <strong>{{ monthTitle() }}</strong>

@@ -2203,3 +2203,117 @@ tbody tr:hover {
   border-color: #b91c1c;
   background: #b91c1c;
 }
+
+/* Menú desplegable de acciones de un registro (compartir, invitar al portal). */
+.share-menu {
+  position: relative;
+}
+.share-menu__panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 258px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: 0 14px 34px rgb(15 23 42 / 14%);
+}
+.share-menu__panel > button,
+.share-menu__panel > a {
+  width: 100%;
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.share-menu__panel > button:hover,
+.share-menu__panel > a:hover {
+  background: var(--color-muted);
+}
+.share-menu__panel svg {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  padding: 5px;
+  border-radius: 50%;
+  background: var(--color-muted);
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.share-menu__panel svg.whatsapp {
+  background: #22c55e;
+  stroke: #fff;
+}
+.share-menu__panel span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.share-menu__panel b {
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+}
+.share-menu__panel small {
+  color: var(--color-text-secondary);
+  font-size: 10.5px;
+}
+.confirm-dialog__icon--ok {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+/* Acceso de un cliente al portal: estado en el botón y resumen del menú. */
+.portal-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+.portal-dot--active {
+  background: #22c55e;
+}
+.portal-dot--disabled {
+  background: #dc2626;
+}
+.portal-access-summary {
+  margin-bottom: 4px;
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-bottom: 1px solid var(--color-border);
+}
+.portal-access-summary em {
+  font-style: normal;
+  color: var(--color-text-secondary);
+}
+.portal-access-summary em.portal-status--active {
+  color: #16a34a;
+}
+.portal-access-summary em.portal-status--disabled {
+  color: #dc2626;
+}
+.share-menu__panel > button.danger b {
+  color: #dc2626;
+}
+.share-menu__panel > button.danger svg {
+  background: #fee2e2;
+  stroke: #dc2626;
+}

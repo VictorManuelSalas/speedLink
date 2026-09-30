@@ -1,0 +1,104 @@
+<header class="settings-header settings-header--section">
+  <div>
+    <div class="breadcrumbs">
+      <a routerLink="/settings">Ajustes</a><b>›</b><span>Personalización</span><b>›</b
+      ><span>Módulos</span>
+    </div>
+    <div class="settings-title">
+      <span class="settings-icon settings-icon--large"
+        ><img src="/icons/settings/fi-rr-apps.svg" alt=""
+      /></span>
+      <div>
+        <h1>Módulos</h1>
+        <p>
+          Agrega campos a los módulos del sistema o crea módulos propios con sus campos. Todo aparece en
+          el menú y en los formularios del CRM.
+        </p>
+      </div>
+    </div>
+  </div>
+  @if (canEdit()) {
+    <button class="button button--primary" (click)="creating.set(true)">＋ Nuevo módulo</button>
+  }
+</header>
+
+<section class="settings-metrics">
+  <article class="settings-metric settings-metric--blue">
+    <span>Del sistema</span><strong>{{ nativeRows().length }}</strong><small>Módulos nativos</small>
+  </article>
+  <article class="settings-metric settings-metric--violet">
+    <span>Personalizados</span><strong>{{ customRows().length }}</strong><small>Creados por tu equipo</small>
+  </article>
+  <article class="settings-metric settings-metric--green">
+    <span>Campos personalizados</span><strong>{{ totalCustomFields() }}</strong
+    ><small>En todos los módulos</small>
+  </article>
+</section>
+
+<ng-template #rowTemplate let-row>
+  <article class="mod-row">
+    <span class="mod-row__icon"><img [src]="row.icon" alt="" /></span>
+    <a class="mod-row__main" [routerLink]="['/settings/modules', row.key]"
+      ><b
+        >{{ row.label }}
+        <em class="mod-badge mod-badge--{{ row.kind }}">{{
+          row.kind === 'native' ? 'Sistema' : 'Personalizado'
+        }}</em></b
+      ><small
+        >{{ row.builtInFields }} campo(s) del sistema · {{ row.customFields }} personalizado(s) ·
+        {{ row.records }} registro(s)</small
+      ></a
+    >
+    <label class="mod-menu-toggle" [class.is-locked]="!canEdit()"
+      ><input
+        type="checkbox"
+        [checked]="row.inMenu"
+        [disabled]="!canEdit()"
+        (change)="toggleMenu(row)" /><i></i><span>{{ row.inMenu ? 'En el menú' : 'Oculto' }}</span></label
+    >
+    <a class="button mod-row__action" [routerLink]="['/settings/modules', row.key]">Campos ›</a>
+  </article>
+</ng-template>
+
+<section class="settings-content-card mod-section">
+  <header class="settings-content-card__header">
+    <div>
+      <h2>Módulos personalizados</h2>
+      <p>Se crean desde cero. Solo el rol Administrador los ve hasta que des permiso en Roles.</p>
+    </div>
+  </header>
+  @for (row of customRows(); track row.key) {
+    <ng-container *ngTemplateOutlet="rowTemplate; context: { $implicit: row }" />
+  } @empty {
+    <div class="settings-empty">
+      <span>＋</span>
+      <h2>Aún no hay módulos personalizados</h2>
+      <p>Crea uno para llevar, por ejemplo, órdenes de trabajo, proveedores o torres de red.</p>
+      @if (canEdit()) {
+        <button class="button button--primary" type="button" (click)="creating.set(true)">
+          Crear el primero
+        </button>
+      }
+    </div>
+  }
+</section>
+
+<section class="settings-content-card mod-section">
+  <header class="settings-content-card__header">
+    <div>
+      <h2>Módulos del sistema</h2>
+      <p>No se pueden eliminar ni quitarles sus campos, pero sí agregarles campos propios.</p>
+    </div>
+  </header>
+  @for (row of nativeRows(); track row.key) {
+    <ng-container *ngTemplateOutlet="rowTemplate; context: { $implicit: row }" />
+  }
+</section>
+
+@if (creating()) {
+  <app-module-form-dialog (saved)="created($event)" (closed)="creating.set(false)" />
+}
+
+@if (toast()) {
+  <div class="settings-toast"><span>✓</span>{{ toast() }}</div>
+}

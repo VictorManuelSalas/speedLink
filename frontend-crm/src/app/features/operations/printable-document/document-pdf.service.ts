@@ -53,11 +53,24 @@ export class DocumentPdfService {
     let y: number = PAGE.marginTop;
 
     // --- Encabezado: emisor a la izquierda, documento a la derecha ---
+    // Con logo, los datos del emisor se recorren a su derecha.
+    let issuerX: number = PAGE.marginX;
+    const logo = ORGANIZATION.logo;
+    if (logo) {
+      try {
+        const format = logo.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+        pdf.addImage(logo, format, PAGE.marginX, y - 5, 14, 14, undefined, 'FAST');
+        issuerX += 18;
+      } catch {
+        // Un logo dañado no debe impedir generar el documento.
+      }
+    }
     pdf.setFont('helvetica', 'bold').setFontSize(13).setTextColor(...COLOR.ink);
-    pdf.text(ORGANIZATION.name, PAGE.marginX, y);
+    pdf.text(ORGANIZATION.name, issuerX, y);
     pdf.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...COLOR.muted);
-    pdf.text(ORGANIZATION.address, PAGE.marginX, y + 5);
-    pdf.text(`${ORGANIZATION.phone} · ${ORGANIZATION.email}`, PAGE.marginX, y + 9);
+    pdf.text(`${ORGANIZATION.legalName} · RFC ${ORGANIZATION.rfc}`, issuerX, y + 5);
+    pdf.text(ORGANIZATION.address, issuerX, y + 9);
+    pdf.text(`${ORGANIZATION.phone} · ${ORGANIZATION.email}`, issuerX, y + 13);
 
     const right = PAGE.width - PAGE.marginX;
     pdf.setFont('helvetica', 'bold').setFontSize(16).setTextColor(...COLOR.ink);
@@ -67,7 +80,7 @@ export class DocumentPdfService {
     pdf.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...COLOR.muted);
     pdf.text(document.issuedAt, right, y + 11.5, { align: 'right' });
 
-    y += 16;
+    y += 19;
     pdf.setDrawColor(...COLOR.ink).setLineWidth(0.5);
     pdf.line(PAGE.marginX, y, right, y);
     y += 10;

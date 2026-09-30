@@ -53,9 +53,11 @@
               </div>
             }
           </div>
-          <button class="button button--danger" type="button" (click)="confirmDelete.set(true)">
-            ⊘ {{ i18n.t('Eliminar') }}
-          </button>
+          @if (canDelete()) {
+            <button class="button button--danger" type="button" (click)="confirmDelete.set(true)">
+              ⊘ {{ i18n.t('Eliminar') }}
+            </button>
+          }
         </div>
       </app-record-header>
 
@@ -135,6 +137,8 @@
           />
         </div>
       </section>
+
+      <app-custom-fields-card moduleKey="tickets" [recordId]="item.id" />
 
       <app-record-detail-layout>
         <div record-main>
@@ -232,13 +236,11 @@
                     @if (comment.attachments.length) {
                       <div class="comment-attachments">
                         @for (file of comment.attachments; track file.id) {
-                          <a [href]="file.url" target="_blank" rel="noopener"
-                            ><span>{{ file.mimeType.startsWith('image/') ? '▧' : '▤' }}</span
-                            ><span
-                              ><b>{{ file.fileName }}</b
-                              ><small>{{ formatSize(file.size) }}</small></span
-                            ></a
-                          >
+                          <app-file-item
+                            [file]="file"
+                            [deletable]="true"
+                            (deleted)="store.removeAttachment(item.id, file.id, comment.id)"
+                          />
                         }
                       </div>
                     }
@@ -343,13 +345,11 @@
               </div>
             </header>
             @for (file of item.attachments; track file.id) {
-              <a [href]="file.url" target="_blank" rel="noopener"
-                ><span>{{ file.mimeType.startsWith('image/') ? '▧' : '▤' }}</span
-                ><span
-                  ><b>{{ file.fileName }}</b
-                  ><small>{{ formatSize(file.size) }}</small></span
-                ></a
-              >
+              <app-file-item
+                [file]="file"
+                [deletable]="true"
+                (deleted)="store.removeAttachment(item.id, file.id)"
+              />
             }
             <app-attachment-picker
               label="Agregar archivos"

@@ -1,0 +1,288 @@
+<header class="settings-header settings-header--section">
+  <div>
+    <div class="breadcrumbs">
+      <a routerLink="/settings">Ajustes</a><b>›</b><span>Canales</span><b>›</b
+      ><span>Mensajería SMS</span>
+    </div>
+    <div class="settings-title">
+      <span class="settings-icon settings-icon--large"
+        ><img src="/icons/settings/fi-rr-comments.svg" alt=""
+      /></span>
+      <div>
+        <h1>Mensajería SMS</h1>
+        <p>Proveedor y remitente de los avisos por mensaje de texto a tus clientes.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="channel-status channel-status--{{ store.smsStatus() }}">
+  <span class="channel-status__dot"></span>
+  <div>
+    <b>
+      @switch (store.smsStatus()) {
+        @case ('ready') {
+          Listo para enviar
+        }
+        @case ('incomplete') {
+          Configuración incompleta
+        }
+        @default {
+          SMS desactivado
+        }
+      }
+    </b>
+    <p>
+      @switch (store.smsStatus()) {
+        @case ('ready') {
+          Remitente {{ store.sms().sender }} vía {{ provider().label }}. La conexión con el
+          proveedor se comprueba al enviar desde el backend.
+        }
+        @case ('incomplete') {
+          Faltan datos del proveedor: no se enviarán mensajes hasta completarlos.
+        }
+        @default {
+          Actívalo cuando tengas una cuenta con un proveedor de SMS.
+        }
+      }
+    </p>
+  </div>
+</section>
+
+@if (!canEdit()) {
+  <p class="channel-readonly">Tu rol solo permite consultar esta configuración.</p>
+}
+
+<div class="channel-layout">
+  <form class="channel-form" (submit)="$event.preventDefault(); save()" novalidate>
+    <fieldset class="settings-content-card channel-card" [disabled]="!canEdit()">
+      <header class="channel-card__header">
+        <div>
+          <h2>Envío de SMS</h2>
+          <p>Apágalo para detener los mensajes sin perder la configuración.</p>
+        </div>
+        <label class="channel-switch"
+          ><input
+            type="checkbox"
+            name="enabled"
+            [ngModel]="draft().enabled"
+            (ngModelChange)="set('enabled', $event)"
+          /><i></i><span>{{ draft().enabled ? 'Activo' : 'Inactivo' }}</span></label
+        >
+      </header>
+    </fieldset>
+
+    <fieldset class="settings-content-card channel-card" [disabled]="!canEdit()">
+      <header class="channel-card__header">
+        <div>
+          <h2>Proveedor</h2>
+          <p>Credenciales de la cuenta con la que se envían los mensajes.</p>
+        </div>
+      </header>
+      <div class="channel-grid">
+        <label class="channel-wide"
+          ><span>Proveedor <b>*</b></span
+          ><span class="settings-select"
+            ><select
+              name="provider"
+              [ngModel]="draft().provider"
+              (ngModelChange)="set('provider', $event)"
+            >
+              @for (option of providers; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }</select
+            ><i>⌄</i></span
+          ></label
+        >
+        <label [class.has-error]="error('accountId')"
+          ><span>{{ provider().accountLabel }} <b>*</b></span
+          ><input
+            name="accountId"
+            autocomplete="off"
+            [ngModel]="draft().accountId"
+            (ngModelChange)="set('accountId', $event)"
+          />
+          @if (error('accountId'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+        <label [class.has-error]="error('secret')"
+          ><span>{{ provider().tokenLabel }} <b>*</b></span>
+          @if (changingToken()) {
+            <input
+              name="token"
+              type="password"
+              autocomplete="new-password"
+              [ngModel]="newToken()"
+              (ngModelChange)="setToken($event)"
+            />
+          } @else {
+            <span class="channel-secret"
+              ><span>●●●●●●●● Guardado</span
+              ><button type="button" (click)="changingToken.set(true)">Cambiar</button></span
+            >
+          }
+          @if (error('secret'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          } @else {
+            <small class="channel-hint">No se vuelve a mostrar después de guardarlo.</small>
+          }
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset class="settings-content-card channel-card" [disabled]="!canEdit()">
+      <header class="channel-card__header">
+        <div>
+          <h2>Remitente</h2>
+          <p>
+            Lo que ve el cliente como origen del mensaje. En México los operadores suelen exigir un
+            número; el nombre solo funciona si tu proveedor lo tiene autorizado.
+          </p>
+        </div>
+      </header>
+      <div class="channel-grid">
+        <div class="channel-wide sms-sender-type" role="radiogroup" aria-label="Tipo de remitente">
+          <label
+            ><input
+              type="radio"
+              name="senderType"
+              [checked]="draft().senderType === 'number'"
+              (change)="set('senderType', 'number')"
+            /><span><b>Número</b><small>Formato internacional, p. ej. +5215512345678.</small></span></label
+          >
+          <label
+            ><input
+              type="radio"
+              name="senderType"
+              [checked]="draft().senderType === 'alphanumeric'"
+              (change)="set('senderType', 'alphanumeric')"
+            /><span><b>Nombre</b><small>De 3 a 11 caracteres, p. ej. SPEEDLINK.</small></span></label
+          >
+        </div>
+        <label class="channel-wide" [class.has-error]="error('sender')"
+          ><span>{{ draft().senderType === 'number' ? 'Número remitente' : 'Nombre remitente' }} <b>*</b></span
+          ><input
+            name="sender"
+            [placeholder]="draft().senderType === 'number' ? '+5215512345678' : 'SPEEDLINK'"
+            [ngModel]="draft().sender"
+            (ngModelChange)="set('sender', $event)"
+          />
+          @if (error('sender'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset class="settings-content-card channel-card" [disabled]="!canEdit()">
+      <header class="channel-card__header">
+        <div>
+          <h2>Horario sin envíos</h2>
+          <p>Los avisos automáticos que caigan en este horario esperan a que termine.</p>
+        </div>
+        <label class="channel-switch"
+          ><input
+            type="checkbox"
+            name="quietHours"
+            [ngModel]="draft().quietHours"
+            (ngModelChange)="set('quietHours', $event)"
+          /><i></i><span>{{ draft().quietHours ? 'Activo' : 'Inactivo' }}</span></label
+        >
+      </header>
+      @if (draft().quietHours) {
+        <div class="channel-grid">
+          <label [class.has-error]="error('quietStart')"
+            ><span>Desde</span
+            ><input
+              name="quietStart"
+              type="time"
+              [ngModel]="draft().quietStart"
+              (ngModelChange)="set('quietStart', $event)"
+            />
+            @if (error('quietStart'); as message) {
+              <small class="channel-error">{{ message }}</small>
+            }
+          </label>
+          <label
+            ><span>Hasta</span
+            ><input
+              name="quietEnd"
+              type="time"
+              [ngModel]="draft().quietEnd"
+              (ngModelChange)="set('quietEnd', $event)"
+          /></label>
+          <small class="channel-wide channel-hint">
+            {{
+              quietNow()
+                ? 'Ahora mismo estás dentro del horario sin envíos.'
+                : 'Ahora mismo los mensajes se enviarían de inmediato.'
+            }}
+          </small>
+        </div>
+      }
+    </fieldset>
+  </form>
+
+  <aside class="channel-aside">
+    <article class="settings-content-card sms-calculator">
+      <h2>Calculadora de mensajes</h2>
+      <p>El operador cobra por segmento. Un acento como «á» o un emoji reduce el límite a 70.</p>
+      <textarea
+        rows="4"
+        aria-label="Texto de prueba"
+        [ngModel]="sample()"
+        (ngModelChange)="sample.set($event)"
+      ></textarea>
+      <div class="sms-calculator__result" [class.is-multi]="sampleSegments().segments > 1">
+        <b>{{ sampleSegments().segments }} {{ sampleSegments().segments === 1 ? 'SMS' : 'SMS cobrados' }}</b>
+        <small
+          >{{ sampleSegments().length }} caracteres · {{ sampleSegments().encoding }} · hasta
+          {{ sampleSegments().perSegment }} por SMS</small
+        >
+      </div>
+    </article>
+    <article class="settings-content-card">
+      <h2>Tus plantillas de SMS</h2>
+      <ul class="sms-templates">
+        @for (item of smsTemplates(); track item.template.id) {
+          <li>
+            <span
+              ><b>{{ item.template.name }}</b
+              ><small>{{ item.segments.length }} caracteres · {{ item.segments.encoding }}</small></span
+            >
+            <em [class.is-multi]="item.segments.segments > 1">{{ item.segments.segments }} SMS</em>
+          </li>
+        } @empty {
+          <li><small>No hay plantillas de SMS.</small></li>
+        }
+      </ul>
+      <small
+        >Conteo aproximado: las variables como ${{ '{' }}customer.name{{ '}' }} cambian el largo
+        final. <a routerLink="/settings/templates">Editar plantillas</a></small
+      >
+    </article>
+    <article class="settings-content-card">
+      <small
+        >Última modificación: {{ store.sms().updatedAt | date: 'dd MMM y, HH:mm' }} ·
+        {{ store.sms().updatedBy }}</small
+      >
+    </article>
+  </aside>
+</div>
+
+@if (canEdit() && (dirty() || saveError())) {
+  <footer class="channel-savebar" role="status">
+    <span [class.channel-error]="saveError()">{{ saveError() || 'Tienes cambios sin guardar.' }}</span>
+    <div>
+      <button class="button" type="button" (click)="discard()">Descartar</button>
+      <button class="button button--primary" type="button" [disabled]="!dirty()" (click)="save()">
+        Guardar cambios
+      </button>
+    </div>
+  </footer>
+}
+
+@if (toast()) {
+  <div class="settings-toast"><span>✓</span>{{ toast() }}</div>
+}

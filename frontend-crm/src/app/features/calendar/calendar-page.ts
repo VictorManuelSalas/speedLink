@@ -4,6 +4,9 @@ import { RouterLink } from '@angular/router';
 import { CalendarEvent, CalendarEventType, CalendarStore } from './calendar-store';
 import { InlineEditableDateField } from '../../shared/inline-editable-date-field';
 import { PicklistOption, StyledPicklist } from '../../shared/styled-picklist';
+import { lookupDisplayLabel, lookupPicklistOptions } from '../operations/lookup-options';
+import { ModuleField } from '../operations/operational-modules.data';
+import { OperationalStore } from '../operations/operational-store';
 
 @Component({
   selector: 'app-calendar-page',
@@ -14,6 +17,7 @@ import { PicklistOption, StyledPicklist } from '../../shared/styled-picklist';
 })
 export class CalendarPage {
   private readonly calendarStore = inject(CalendarStore);
+  private readonly operationalStore = inject(OperationalStore);
   readonly weekdays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
   readonly filters = [
     { label: 'Todos', value: 'ALL', tone: 'blue' },
@@ -27,11 +31,19 @@ export class CalendarPage {
     { value: 'PAYMENT', label: 'Pago' },
     { value: 'MAINTENANCE', label: 'Mantenimiento' },
   ];
-  readonly clientOptions: ReadonlyArray<PicklistOption> = [
-    { value: 'SL-1040', label: 'José Luis Hernández' },
-    { value: 'SL-1041', label: 'Morgan Díaz' },
-    { value: 'SL-1042', label: 'Consultorio Dental Sonríe' },
-  ];
+  /** Lookup a Clientes, igual que en el resto de formularios del CRM. */
+  private readonly clientField: ModuleField = {
+    key: 'client',
+    label: 'Cliente',
+    type: 'lookup',
+    lookupModule: 'customers',
+  };
+  /** Clientes en vivo; conserva el valor del evento que se está editando. */
+  readonly clientOptions = computed(() =>
+    lookupPicklistOptions(this.operationalStore, this.clientField, {
+      currentValue: this.draft()['client'] || undefined,
+    }),
+  );
   readonly responsableOptions: ReadonlyArray<PicklistOption> = [
     { value: 'USR-001', label: 'Andrea Torres' },
     { value: 'USR-002', label: 'Carlos Mendoza' },
@@ -156,15 +168,18 @@ export class CalendarPage {
       .toUpperCase();
   }
   getClientName(clientId: string): string {
-    const clientMap: Record<string, string> = {
-      'SL-1040': 'José Luis Hernández',
-      'SL-1041': 'Morgan Díaz',
-      'SL-1042': 'Consultorio Dental Sonríe',
-    };
-    return clientMap[clientId] || clientId;
+    return lookupDisplayLabel(this.operationalStore, this.clientField, clientId);
   }
   getClientRoute(clientId: string): string | null {
-    return clientId ? `/customers/${clientId}` : null;
+    const id = this.customerIdOf(clientId);
+    return id ? `/customers/${id}` : null;
+  }
+  /** Id del cliente si el valor es uno real (no p. ej. "Operación interna"). */
+  private customerIdOf(value: string | undefined): string | undefined {
+    const id = value?.trim();
+    return id && this.operationalStore.recordsFor('customers').some((record) => record.id === id)
+      ? id
+      : undefined;
   }
   getResponsableName(userId: string): string {
     const userMap: Record<string, string> = {
@@ -175,7 +190,7 @@ export class CalendarPage {
     return userMap[userId] || userId;
   }
   getResponsableRoute(userId: string): string | null {
-    return userId ? `/users/${userId}` : null;
+    return userId ? `/settings/users/${userId}` : null;
   }
   setDraft(key: string, value: string): void {
     this.draft.update((draft) => ({ ...draft, [key]: value }));
@@ -204,6 +219,7 @@ export class CalendarPage {
         endsAt: draft['endsAt'],
         type: (draft['type'] || 'INSTALLATION') as CalendarEventType,
         client: draft['client']?.trim() || 'Sin registro relacionado',
+        clientId: this.customerIdOf(draft['client']),
         assignedTo: draft['assignedTo'] || 'USR-001',
       });
       this.editingEventId.set(null);
@@ -219,6 +235,7 @@ export class CalendarPage {
         type: (draft['type'] || 'INSTALLATION') as CalendarEventType,
         status: 'SCHEDULED',
         client: draft['client']?.trim() || 'Sin registro relacionado',
+        clientId: this.customerIdOf(draft['client']),
         assignedTo: draft['assignedTo'] || 'USR-001',
         allDay: false,
       });

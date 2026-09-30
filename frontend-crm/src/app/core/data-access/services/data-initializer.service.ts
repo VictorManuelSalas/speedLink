@@ -10,6 +10,7 @@ import { OperationalDataService } from './operational-data.service';
 import type { OperationalRecord } from '../../../features/operations/operational-modules.data';
 import { OPERATIONAL_MODULES } from '../../../features/operations/operational-modules.data';
 import { CUSTOMERS } from '../mock-crm-data';
+import { DEMO_ASSIGNMENTS, DEMO_EQUIPMENT } from '../demo-fixtures';
 
 @Injectable({
   providedIn: 'root',
@@ -54,8 +55,9 @@ export class DataInitializerService {
     const recordsToLoad: Record<string, OperationalRecord[]> = {
       leads: this.mapLeadsToOperationalRecords(),
       services: this.mapServicesToOperationalRecords(),
-      equipment: this.mapEquipmentToOperationalRecords(),
-      assignments: this.mapAssignmentsToOperationalRecords(),
+      // Los registros fijos de demostración van primero y siempre existen.
+      equipment: [...DEMO_EQUIPMENT, ...this.mapEquipmentToOperationalRecords()],
+      assignments: [...DEMO_ASSIGNMENTS, ...this.mapAssignmentsToOperationalRecords()],
       contracts: this.mapContractsToOperationalRecords(),
       // Las facturas y pagos que cuelgan de cada cliente también son registros
       // de sus módulos: así el id que se ve en la ficha del cliente abre el
@@ -73,7 +75,9 @@ export class DataInitializerService {
     };
 
     // Update store with all records
-    this.operationalStore.records.set(recordsToLoad as any);
+    // Se mezcla y no se reemplaza: los registros de módulos personalizados
+    // (cm_…) ya se cargaron del almacenamiento y no vienen en los datos demo.
+    this.operationalStore.records.update((current) => ({ ...current, ...recordsToLoad }));
   }
 
   /**

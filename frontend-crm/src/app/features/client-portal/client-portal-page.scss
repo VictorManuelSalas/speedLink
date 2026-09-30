@@ -739,7 +739,7 @@
   min-height: 70px;
   padding: 12px 17px;
   display: grid;
-  grid-template-columns: 42px 1fr auto auto;
+  grid-template-columns: 42px 1fr auto;
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid #eef2f7;
@@ -992,14 +992,8 @@
   .files-list article {
     grid-template-columns: 42px 1fr;
   }
-  .files-list article button {
-    grid-row: 2;
-  }
-  .files-list article button:nth-last-child(2) {
-    grid-column: 1;
-  }
-  .files-list article button:last-child {
-    grid-column: 2;
+  .file-actions {
+    grid-column: 1 / -1;
   }
   .client-footer {
     padding: 15px;
@@ -1007,4 +1001,58 @@
     flex-direction: column;
     gap: 6px;
   }
+}
+
+.file-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.files-list article button.danger {
+  background: #fef2f2;
+  color: #dc2626;
+}
+.files-list article .file-confirm {
+  color: #dc2626;
+  font-weight: 700;
+}
+.file-open {
+  cursor: pointer;
+}
+.portal-wifi {
+  margin-bottom: 18px;
+
+  ul {
+    margin: 0;
+    padding: 0 17px 10px;
+    list-style: none;
+  }
+  li {
+    padding: 10px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid #eef2f7;
+  }
+  li:last-child {
+    border: 0;
+  }
+  span:nth-child(2) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  b {
+    font-size: 12px;
+  }
+  small {
+    color: #64748b;
+    font-size: 10px;
+  }
+}
+.portal-wifi__icon {
+  font-size: 18px;
 }

@@ -1,0 +1,268 @@
+<header class="settings-header settings-header--section">
+  <div>
+    <div class="breadcrumbs">
+      <a routerLink="/settings">Ajustes</a><b>›</b><span>Canales</span><b>›</b
+      ><span>Correo SMTP</span>
+    </div>
+    <div class="settings-title">
+      <span class="settings-icon settings-icon--large"
+        ><img src="/icons/settings/fi-rr-envelope.svg" alt=""
+      /></span>
+      <div>
+        <h1>Correo SMTP</h1>
+        <p>Servidor por el que salen los correos del CRM: invitaciones, facturas y mensajes.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="channel-status channel-status--{{ store.smtpStatus() }}">
+  <span class="channel-status__dot"></span>
+  <div>
+    <b>
+      @switch (store.smtpStatus()) {
+        @case ('ready') {
+          Listo para enviar
+        }
+        @case ('incomplete') {
+          Configuración incompleta
+        }
+        @default {
+          Correo saliente desactivado
+        }
+      }
+    </b>
+    <p>
+      @switch (store.smtpStatus()) {
+        @case ('ready') {
+          Los correos salen como {{ store.smtp().fromName }} &lt;{{ store.smtp().fromEmail }}&gt;.
+          La conexión con el servidor se comprueba al enviar desde el backend.
+        }
+        @case ('incomplete') {
+          Faltan datos obligatorios: los correos solo se pueden guardar como borrador.
+        }
+        @default {
+          Nadie puede enviar correos desde el CRM; los borradores se conservan.
+        }
+      }
+    </p>
+  </div>
+  <dl>
+    <div><dt>Enviados</dt><dd>{{ sentCount() }}</dd></div>
+    <div><dt>Borradores</dt><dd>{{ draftCount() }}</dd></div>
+  </dl>
+</section>
+
+@if (!canEdit()) {
+  <p class="channel-readonly">Tu rol solo permite consultar esta configuración.</p>
+}
+
+<div class="channel-layout">
+  <form class="channel-form" (submit)="$event.preventDefault(); save()" novalidate>
+    <fieldset class="settings-content-card channel-card" [disabled]="!canEdit()">
+      <header class="channel-card__header">
+        <div>
+          <h2>Envío de correo</h2>
+          <p>Apágalo para detener todos los envíos sin perder la configuración.</p>
+        </div>
+        <label class="channel-switch"
+          ><input
+            type="checkbox"
+            name="enabled"
+            [ngModel]="draft().enabled"
+            (ngModelChange)="set('enabled', $event)"
+          /><i></i><span>{{ draft().enabled ? 'Activo' : 'Inactivo' }}</span></label
+        >
+      </header>
+    </fieldset>
+
+    <fieldset class="settings-content-card channel-card" [disabled]="!canEdit()">
+      <header class="channel-card__header">
+        <div>
+          <h2>Servidor</h2>
+          <p>Los datos los da tu proveedor de correo (Google Workspace, Microsoft 365, etc.).</p>
+        </div>
+      </header>
+      <div class="channel-grid">
+        <label class="channel-wide" [class.has-error]="error('host')"
+          ><span>Servidor SMTP <b>*</b></span
+          ><input
+            name="host"
+            placeholder="smtp.tudominio.com"
+            autocomplete="off"
+            [ngModel]="draft().host"
+            (ngModelChange)="set('host', $event)"
+          />
+          @if (error('host'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+        <label
+          ><span>Seguridad <b>*</b></span
+          ><span class="settings-select"
+            ><select
+              name="security"
+              [ngModel]="draft().security"
+              (ngModelChange)="setSecurity($event)"
+            >
+              @for (option of securityOptions; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }</select
+            ><i>⌄</i></span
+          ></label
+        >
+        <label [class.has-error]="error('port')"
+          ><span>Puerto <b>*</b></span
+          ><input
+            name="port"
+            type="number"
+            min="1"
+            max="65535"
+            [ngModel]="draft().port"
+            (ngModelChange)="setPort($event)"
+          />
+          @if (error('port'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+        <label [class.has-error]="error('username')"
+          ><span>Usuario <b>*</b></span
+          ><input
+            name="username"
+            autocomplete="off"
+            [ngModel]="draft().username"
+            (ngModelChange)="set('username', $event)"
+          />
+          @if (error('username'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+        <label [class.has-error]="error('secret')"
+          ><span>Contraseña <b>*</b></span>
+          @if (changingPassword()) {
+            <input
+              name="password"
+              type="password"
+              autocomplete="new-password"
+              [placeholder]="store.hasSmtpPassword() ? 'Nueva contraseña' : ''"
+              [ngModel]="newPassword()"
+              (ngModelChange)="setPassword($event)"
+            />
+          } @else {
+            <span class="channel-secret"
+              ><span>●●●●●●●● Guardada</span
+              ><button type="button" (click)="changingPassword.set(true)">Cambiar</button></span
+            >
+          }
+          @if (error('secret'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          } @else {
+            <small class="channel-hint">No se vuelve a mostrar después de guardarla.</small>
+          }
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset class="settings-content-card channel-card" [disabled]="!canEdit()">
+      <header class="channel-card__header">
+        <div>
+          <h2>Remitente</h2>
+          <p>Cómo aparecen los correos en la bandeja de tus clientes.</p>
+        </div>
+      </header>
+      <div class="channel-grid">
+        <label [class.has-error]="error('fromName')"
+          ><span>Nombre del remitente <b>*</b></span
+          ><input
+            name="fromName"
+            [ngModel]="draft().fromName"
+            (ngModelChange)="set('fromName', $event)"
+          />
+          @if (error('fromName'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+        <label [class.has-error]="error('fromEmail')"
+          ><span>Correo del remitente <b>*</b></span
+          ><input
+            name="fromEmail"
+            type="email"
+            [ngModel]="draft().fromEmail"
+            (ngModelChange)="set('fromEmail', $event)"
+          />
+          @if (error('fromEmail'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+        <label class="channel-wide" [class.has-error]="error('replyTo')"
+          ><span>Responder a</span
+          ><input
+            name="replyTo"
+            type="email"
+            placeholder="Opcional: a dónde llegan las respuestas"
+            [ngModel]="draft().replyTo"
+            (ngModelChange)="set('replyTo', $event)"
+          />
+          @if (error('replyTo'); as message) {
+            <small class="channel-error">{{ message }}</small>
+          }
+        </label>
+      </div>
+    </fieldset>
+  </form>
+
+  <aside class="channel-aside">
+    <article class="settings-content-card channel-preview">
+      <h2>Vista previa en la bandeja</h2>
+      <div class="channel-mail">
+        <span class="channel-mail__avatar">{{ (draft().fromName || 'S').slice(0, 1) }}</span>
+        <div>
+          <b>{{ draft().fromName || 'Remitente' }}</b>
+          <small>&lt;{{ draft().fromEmail || 'correo@dominio.com' }}&gt;</small>
+          <p>Tu factura FAC-000124 está lista</p>
+          @if (draft().replyTo) {
+            <small>Las respuestas llegan a {{ draft().replyTo }}</small>
+          }
+        </div>
+      </div>
+    </article>
+    @if (draft().enabled && warnings().length) {
+      <article class="settings-content-card channel-warnings">
+        <h2>Revisa antes de guardar</h2>
+        <ul>
+          @for (warning of warnings(); track warning) {
+            <li>{{ warning }}</li>
+          }
+        </ul>
+      </article>
+    }
+    <article class="settings-content-card channel-note">
+      <h2>¿Qué hace esta configuración?</h2>
+      <ul>
+        <li>Si está desactivada o incompleta, el redactor de correos solo permite borradores.</li>
+        <li>Los correos siempre salen desde el remitente de aquí, sin importar quién los redacte.</li>
+        <li>Las contraseñas se guardan cifradas en el servidor cuando el backend esté conectado.</li>
+      </ul>
+      <small
+        >Última modificación: {{ store.smtp().updatedAt | date: 'dd MMM y, HH:mm' }} ·
+        {{ store.smtp().updatedBy }}</small
+      >
+    </article>
+  </aside>
+</div>
+
+@if (canEdit() && (dirty() || saveError())) {
+  <footer class="channel-savebar" role="status">
+    <span [class.channel-error]="saveError()">{{ saveError() || 'Tienes cambios sin guardar.' }}</span>
+    <div>
+      <button class="button" type="button" (click)="discard()">Descartar</button>
+      <button class="button button--primary" type="button" [disabled]="!dirty()" (click)="save()">
+        Guardar cambios
+      </button>
+    </div>
+  </footer>
+}
+
+@if (toast()) {
+  <div class="settings-toast"><span>✓</span>{{ toast() }}</div>
+}

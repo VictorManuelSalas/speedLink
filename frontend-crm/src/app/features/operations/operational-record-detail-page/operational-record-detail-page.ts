@@ -54,8 +54,17 @@ import {
   RecordNotesSection,
 } from '../record-sections/record-sections';
 import { InterestedServicesSectionComponent } from '../record-sections/interested-services-section';
+import { FileItem } from '../../../shared/file-item';
+import { EquipmentAccessSection } from '../record-sections/equipment-access-section';
+import { DeviceAccessStore } from '../../../core/equipment/device-access.store';
+import { WIFI_BANDS } from '../../../core/equipment/device-access.model';
+import { moduleDefinition, moduleRoute } from '../module-registry';
+import { OrganizationStore } from '../../../core/organization/organization-store';
+import { computeTax } from '../../../core/organization/organization.model';
+import { whatsappLink } from '../../../core/connections/connections.model';
+import { FileViewer, downloadAttachment } from '../../../shared/file-viewer.service';
 
-type DetailTab = 'Resumen' | 'Correos' | 'Eventos' | 'Notas' | 'Actividad' | 'Archivos' | 'Contratos' | 'Asignaciones' | 'Relaciones' | 'Detalles' | 'Conciliación' | 'Comprobante' | 'Pagos';
+type DetailTab = 'Resumen' | 'Acceso' | 'Correos' | 'Eventos' | 'Notas' | 'Actividad' | 'Archivos' | 'Contratos' | 'Asignaciones' | 'Relaciones' | 'Detalles' | 'Conciliación' | 'Comprobante' | 'Pagos';
 
 interface RelatedItem {
   icon: string;
@@ -89,12 +98,15 @@ const INTERNET_PERMANENCE_MONTHS = 6;
  */
 const DERIVED_FIELDS: Readonly<Record<string, { label: string; type: ColumnType }>> = {
   monthlyRevenue: { label: 'Ingreso mensual', type: 'money' },
+  taxRate: { label: 'Tasa aplicada (%)', type: 'text' },
 };
 
 @Component({
   selector: 'app-operational-record-detail-page',
   imports: [
     AttachmentPicker,
+    FileItem,
+    EquipmentAccessSection,
     CurrencyPipe,
     DatePipe,
     DecimalPipe,
@@ -128,11 +140,17 @@ export class OperationalRecordDetailPage {
   private readonly crmData = inject(CRM_DATA);
   readonly store = inject(OperationalStore);
   private readonly pdf = inject(DocumentPdfService);
+  private readonly organization = inject(OrganizationStore);
+  private readonly fileViewer = inject(FileViewer);
+  private readonly deviceAccess = inject(DeviceAccessStore);
   private readonly pendingEmail = inject(PendingEmailService);
   private readonly templates = inject(TemplateStore);
   readonly i18n = inject(LanguageService);
-  readonly moduleKey = this.route.snapshot.data['moduleKey'] as OperationalModuleKey;
-  readonly definition = OPERATIONAL_MODULES[this.moduleKey];
+  readonly moduleKey = (this.route.snapshot.data['moduleKey'] ??
+    this.route.snapshot.paramMap.get('moduleKey')) as OperationalModuleKey;
+  readonly definition = moduleDefinition(this.moduleKey)!;
+  /** `/leads` o `/m/cm_…`: los personalizados viven bajo `/m`. */
+  readonly listRoute = moduleRoute(this.moduleKey);
   readonly leadGpsField: RecordFieldConfig = {
     key: 'coordinates',
     label: 'Ubicación GPS',
@@ -147,7 +165,7 @@ export class OperationalRecordDetailPage {
       : this.moduleKey === 'services'
         ? ['Resumen', 'Contratos', 'Notas', 'Archivos', 'Actividad']
         : this.moduleKey === 'equipment'
-          ? ['Resumen', 'Asignaciones', 'Notas', 'Archivos', 'Actividad']
+          ? ['Resumen', 'Acceso', 'Asignaciones', 'Notas', 'Archivos', 'Actividad']
           : this.moduleKey === 'assignments'
             ? ['Resumen', 'Notas', 'Archivos', 'Actividad']
             : this.moduleKey === 'invoices'
@@ -231,6 +249,8 @@ export class OperationalRecordDetailPage {
   readonly attachmentReset = signal(0);
   readonly uploadModalOpen = signal(false);
   readonly fileMenuId = signal<string | null>(null);
+  /** Archivo con el Eliminar del menú pendiente de confirmar. */
+  readonly fileDeleteConfirmId = signal<string | null>(null);
   readonly paymentMenuId = signal<string | null>(null);
   readonly paymentToDelete = signal<OperationalRecord | null>(null);
   readonly paymentMenuPosition = signal<{ top: number; left: number } | null>(null);
@@ -375,12 +395,12 @@ export class OperationalRecordDetailPage {
     return '';
   }
   whatsappUrl(value: string | number | boolean): string {
-    return `https://wa.me/${String(value ?? '').replace(/\D/g, '')}`;
+    return whatsappLink(value);
   }
   relatedRoute(key: string, value: string | number | boolean): ReadonlyArray<string> | null {
     const text = String(value ?? '');
     if (!text) return null;
-    if (key === 'owner') return findSystemUser(text) ? ['/users', text] : null;
+    if (key === 'owner') return findSystemUser(text) ? ['/settings/users', text] : null;
 
     // Los lookups guardan la etiqueta visible y el id en su `schemaKey`:
     // resolver por ahí es exacto, sin depender del formato del texto.
@@ -442,7 +462,7 @@ export class OperationalRecordDetailPage {
     if (!route) return null;
     const text = String(value);
     const relatedModule = route[0].replace('/', '') as OperationalModuleKey;
-    const related = OPERATIONAL_MODULES[relatedModule]
+    const related = moduleDefinition(relatedModule)
       ? this.store.find(relatedModule, route[1])
       : undefined;
     const title = related ? this.primaryValueForModule(relatedModule, related) : text;
@@ -460,7 +480,7 @@ export class OperationalRecordDetailPage {
     };
   }
   private primaryValueForModule(module: OperationalModuleKey, record: OperationalRecord): string {
-    return String(record[OPERATIONAL_MODULES[module].columns[0].key] ?? record.id);
+    return String(record[moduleDefinition(module)?.columns[0]?.key ?? 'name'] ?? record.id);
   }
   createdAt(record: OperationalRecord): string {
     return String(record['createdAt'] ?? '2026-07-12T09:30:00-06:00');
@@ -539,7 +559,10 @@ export class OperationalRecordDetailPage {
     this.definition.fields.map((field) => field.schemaKey).filter(Boolean) as string[],
   );
   displayFields(record: OperationalRecord) {
-    return Object.keys(record)
+    // Los campos personalizados se muestran aunque estén vacíos: si no, no
+    // habría dónde capturarlos en registros creados antes de agregarlos.
+    const customKeys = this.definition.fields.filter((field) => field.custom).map((field) => field.key);
+    return [...new Set([...Object.keys(record), ...customKeys])]
       .filter(
         (key) =>
           key !== 'id' &&
@@ -564,7 +587,8 @@ export class OperationalRecordDetailPage {
             column?.type ??
             derived?.type ??
             (configured?.type === 'date' ? 'date' : 'text'),
-          editable: Boolean(configured),
+          // Lo calculado (impuestos, total) se deriva de otros campos: no se edita.
+          editable: Boolean(configured) && !configured?.computed,
           inputType:
             configured?.type === 'number'
               ? 'number'
@@ -707,6 +731,25 @@ export class OperationalRecordDetailPage {
       changes[key] = lookupDisplayLabel(this.store, field, String(finalValue)) || finalValue;
     }
 
+    // Factura: cambiar subtotal o impuesto recalcula impuestos y total. Si sólo
+    // cambia el subtotal se respeta la tasa con la que se emitió.
+    if (this.moduleKey === 'invoices' && (key === 'subtotal' || key === 'taxName')) {
+      const tax =
+        key === 'taxName'
+          ? this.organization.tax(String(finalValue))
+          : { factor: 'rate' as const, rate: Number(record['taxRate'] ?? 0) };
+      if (key === 'taxName' && tax && 'name' in tax) {
+        changes['taxRateId'] = tax.id;
+        changes['taxName'] = tax.name;
+        changes['taxRate'] = tax.factor === 'rate' ? tax.rate : 0;
+      }
+      const subtotal = key === 'subtotal' ? Number(finalValue) : Number(record['subtotal']) || 0;
+      const breakdown = computeTax(subtotal, tax);
+      changes['subtotal'] = breakdown.subtotal;
+      changes['taxAmount'] = breakdown.taxAmount;
+      changes['total'] = breakdown.total;
+    }
+
     // La serie pertenece a la unidad instalada: sigue al equipo.
     if (this.moduleKey === 'assignments' && key === 'equipment') {
       const unit = this.store.find('equipment', String(finalValue));
@@ -770,7 +813,7 @@ export class OperationalRecordDetailPage {
   sendContractByEmail(record: OperationalRecord): void {
     const customer = this.contractCustomer(record);
     const document = this.buildDocument(record);
-    const template = this.templates.forModule('contracts', 'email')[0];
+    const template = this.templates.forFeature('tpl-contract-send', 'contracts', 'email');
     if (!customer || !document || !template) return;
     const folio = String(record['contractNumber'] ?? record.id);
     const rendered = this.templates.render(template, this.renderContext(record));
@@ -797,8 +840,8 @@ export class OperationalRecordDetailPage {
   /** Mensaje de WhatsApp con el enlace al contrato. */
   contractWhatsappUrl(record: OperationalRecord): string {
     const customer = this.contractCustomer(record);
-    const phone = String(customer?.['phone'] ?? '').replace(/\D/g, '');
-    const template = this.templates.forModule('contracts', 'sms')[0];
+    const phone = customer?.['phone'];
+    const template = this.templates.forFeature('tpl-contract-whatsapp', 'contracts', 'sms');
     const rendered = template
       ? this.templates.render(template, this.renderContext(record)).body
       : `Contrato ${String(record['contractNumber'] ?? record.id)}`;
@@ -806,7 +849,7 @@ export class OperationalRecordDetailPage {
     const message = `${rendered}
 
 Consúltalo aquí: ${this.recordLink()}`;
-    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    return whatsappLink(phone, message);
   }
   /** Etiqueta de la acción de documento, o null si el módulo no tiene uno. */
   documentActionLabel(): string | null {
@@ -833,6 +876,16 @@ Consúltalo aquí: ${this.recordLink()}`;
   private buildDocument(record: OperationalRecord) {
     return buildPrintableDocument(this.moduleKey, {
       record,
+      wifiNetworks:
+        this.moduleKey === 'assignments'
+          ? this.deviceAccess
+              .access(String(record['equipmentId'] ?? ''))
+              .wifi.filter((network) => network.enabled)
+              .map((network) => ({
+                ssid: network.ssid,
+                band: WIFI_BANDS.find((band) => band.value === network.band)?.label ?? network.band,
+              }))
+          : undefined,
       formatMoney: (value) => this.formatMoney(value),
       formatDate: (value) => this.formatDocumentDate(value),
       statusLabel: (value) => this.statusLabel(value as string),
@@ -1145,6 +1198,7 @@ Consúltalo aquí: ${this.recordLink()}`;
   }
   toggleFileMenu(event: MouseEvent, fileId: string): void {
     event.stopPropagation();
+    this.fileDeleteConfirmId.set(null);
     this.fileMenuId.set(this.fileMenuId() === fileId ? null : fileId);
   }
   togglePaymentMenu(event: MouseEvent, paymentId: string): void {
@@ -1172,6 +1226,26 @@ Consúltalo aquí: ${this.recordLink()}`;
   deleteRecordFile(recordId: string, fileId: string): void {
     this.store.deleteAttachment(recordId, fileId);
     this.fileMenuId.set(null);
+    this.fileDeleteConfirmId.set(null);
+  }
+  viewRecordFile(recordId: string, file: CrmAttachment): void {
+    this.fileMenuId.set(null);
+    this.fileViewer.open(file, () => this.deleteRecordFile(recordId, file.id));
+  }
+  downloadRecordFile(file: CrmAttachment): void {
+    this.fileMenuId.set(null);
+    void downloadAttachment(file);
+  }
+  removeNoteAttachment(recordId: string, noteId: string, fileId: string): void {
+    const note = this.store.notesFor(recordId).find((item) => item.id === noteId);
+    if (!note) return;
+    this.store.updateNote(
+      recordId,
+      noteId,
+      note.message,
+      note.pinned,
+      note.attachments.filter((file) => file.id !== fileId),
+    );
   }
   startEditingNote(recordId: string, noteId: string): void {
     const note = this.notes(recordId).find((item) => item.id === noteId);
@@ -1511,7 +1585,7 @@ Consúltalo aquí: ${this.recordLink()}`;
   }
   archive(id: string): void {
     this.store.archive(this.moduleKey, id);
-    void this.router.navigate(['/', this.moduleKey]);
+    void this.router.navigateByUrl(this.listRoute);
   }
   private parseContractItems(
     record: OperationalRecord,

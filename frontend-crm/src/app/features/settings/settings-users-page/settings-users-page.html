@@ -1,0 +1,439 @@
+<header class="settings-header settings-header--section">
+  <div>
+    <div class="breadcrumbs">
+      <a routerLink="/settings">Ajustes</a><b>›</b><span>General</span><b>›</b><span>Usuarios</span>
+    </div>
+    <div class="settings-title">
+      <span class="settings-icon settings-icon--large"
+        ><img src="/icons/settings/fi-rr-portrait-2.svg" alt=""
+      /></span>
+      <div>
+        <h1>Usuarios</h1>
+        <p>Personas con acceso al CRM, su rol y el estado de su cuenta.</p>
+      </div>
+    </div>
+  </div>
+  @if (canCreate()) {
+    <button class="button button--primary" (click)="openCreate()">＋ Invitar usuario</button>
+  }
+</header>
+
+<section class="settings-metrics users-metrics">
+  <article class="settings-metric settings-metric--blue">
+    <span>Usuarios</span><strong>{{ metrics().total }}</strong><small>En la organización</small>
+  </article>
+  <article class="settings-metric settings-metric--green">
+    <span>Activos</span><strong>{{ metrics().active }}</strong><small>Pueden iniciar sesión</small>
+  </article>
+  <article class="settings-metric settings-metric--amber">
+    <span>Invitaciones</span><strong>{{ metrics().invited }}</strong
+    ><small>Aún no entran por primera vez</small>
+  </article>
+  <article class="settings-metric settings-metric--violet">
+    <span>Suspendidos</span><strong>{{ metrics().suspended }}</strong><small>Sin acceso</small>
+  </article>
+</section>
+
+<section class="settings-content-card">
+  <header class="settings-content-card__header users-toolbar">
+    <div>
+      <h2>Equipo</h2>
+      <p>{{ rows().length }} {{ rows().length === 1 ? 'usuario' : 'usuarios' }} visibles</p>
+    </div>
+    <div class="users-filters">
+      <label class="settings-search"
+        ><span>⌕</span
+        ><input
+          type="search"
+          placeholder="Buscar por nombre, correo o rol…"
+          [ngModel]="query()"
+          (ngModelChange)="query.set($event)"
+      /></label>
+      <span class="settings-select users-filter"
+        ><select
+          aria-label="Filtrar por rol"
+          [ngModel]="roleFilter()"
+          (ngModelChange)="roleFilter.set($event)"
+        >
+          <option value="all">Todos los roles</option>
+          @for (role of access.roles(); track role.id) {
+            <option [value]="role.id">{{ role.name }}</option>
+          }</select
+        ><i>⌄</i></span
+      >
+      <span class="settings-select users-filter"
+        ><select
+          aria-label="Filtrar por estado"
+          [ngModel]="statusFilter()"
+          (ngModelChange)="statusFilter.set($event)"
+        >
+          <option value="all">Todos los estados</option>
+          <option value="active">Activos</option>
+          <option value="invited">Invitaciones pendientes</option>
+          <option value="suspended">Suspendidos</option></select
+        ><i>⌄</i></span
+      >
+    </div>
+  </header>
+
+  <div class="users-table" role="table" aria-label="Usuarios">
+    <div class="users-row users-row--head" role="row">
+      <span role="columnheader">Usuario</span><span role="columnheader">Rol</span
+      ><span role="columnheader">Estado</span><span role="columnheader">Último acceso</span
+      ><span></span>
+    </div>
+    @for (user of rows(); track user.id) {
+      <div class="users-row" role="row" [class.is-suspended]="user.status === 'suspended'">
+        <a
+          class="users-person"
+          role="cell"
+          [routerLink]="['/settings/users', user.id]"
+          [attr.aria-label]="'Ver perfil de ' + user.fullName"
+        >
+          <span class="settings-row__avatar">{{ initials(user.fullName) }}</span>
+          <span class="settings-row__main"
+            ><b
+              >{{ user.fullName }}
+              @if (isSelf(user)) {
+                <em class="users-you">Tú</em>
+              }</b
+            ><small>{{ user.email }}</small></span
+          >
+        </a>
+        <span role="cell"
+          ><a class="users-role" routerLink="/settings/roles" [queryParams]="{ role: user.roleId }">{{
+            roleName(user.roleId)
+          }}</a></span
+        >
+        <span role="cell"
+          ><span class="settings-status settings-status--{{ statusTone(user.status) }}"
+            ><i></i>{{ statusLabels[user.status] }}</span
+          ></span
+        >
+        <span class="settings-row__meta" role="cell">
+          @if (user.lastLoginAt) {
+            {{ user.lastLoginAt | date: 'dd MMM y, HH:mm' }}
+          } @else if (user.status === 'invited') {
+            Invitado {{ user.invitedAt | date: 'dd MMM y' }}
+          } @else {
+            Nunca
+          }
+        </span>
+        <span class="users-actions" role="cell">
+          @if (canUpdate() || canDelete()) {
+            <button
+              #menuTrigger
+              class="icon-button"
+              type="button"
+              aria-label="Acciones del usuario"
+              [attr.aria-expanded]="menuId() === user.id"
+              (click)="toggleMenu($event, user.id)"
+            >
+              •••
+            </button>
+            @if (menuId() === user.id) {
+            <div
+              class="users-menu"
+              role="menu"
+              [appFloatingPanel]="menuTrigger"
+              align="end"
+              (click)="$event.stopPropagation()"
+            >
+              @if (canUpdate()) {
+                <button type="button" role="menuitem" (click)="openEdit(user)">✎ Editar</button>
+                @if (user.status === 'invited') {
+                  <button type="button" role="menuitem" (click)="resendInvitation(user)">
+                    ✉ Reenviar invitación
+                  </button>
+                } @else if (user.status === 'active') {
+                  <button type="button" role="menuitem" (click)="ask('reset', user)">
+                    ⟲ Restablecer contraseña
+                  </button>
+                }
+                @if (user.status === 'suspended') {
+                  <button type="button" role="menuitem" (click)="reactivate(user)">
+                    ✓ Reactivar
+                  </button>
+                } @else {
+                  <button
+                    type="button"
+                    role="menuitem"
+                    [disabled]="!!lockReason(user)"
+                    [attr.title]="lockReason(user)"
+                    (click)="ask('suspend', user)"
+                  >
+                    ⏸ Suspender
+                  </button>
+                }
+              }
+              @if (canDelete()) {
+                <button
+                  class="danger"
+                  type="button"
+                  role="menuitem"
+                  [disabled]="!!lockReason(user)"
+                  [attr.title]="lockReason(user)"
+                  (click)="ask('delete', user)"
+                >
+                  ⊘ Eliminar
+                </button>
+              }
+              @if (lockReason(user); as reason) {
+                <small class="users-menu__note">{{ reason }}: no se puede suspender ni eliminar.</small>
+              }
+            </div>
+            }
+          }
+        </span>
+      </div>
+    } @empty {
+      <div class="settings-empty">
+        <span>⌕</span>
+        <h2>Sin resultados</h2>
+        <p>Ningún usuario coincide con la búsqueda o los filtros.</p>
+      </div>
+    }
+  </div>
+</section>
+
+@if (editor(); as current) {
+  <button class="settings-modal-backdrop" aria-label="Cerrar" (click)="editor.set(null)"></button>
+  <section
+    class="settings-modal"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-label]="current.id ? 'Editar usuario' : 'Invitar usuario'"
+  >
+    <header>
+      <div>
+        <span>Usuarios</span>
+        <h2>{{ current.id ? 'Editar usuario' : 'Invitar usuario' }}</h2>
+        <p>
+          {{
+            current.id
+              ? 'Los cambios de rol aplican de inmediato, incluso si la persona tiene la sesión abierta.'
+              : 'Se genera una contraseña temporal que podrás copiar o enviar por correo.'
+          }}
+        </p>
+      </div>
+      <button class="icon-button" type="button" aria-label="Cerrar" (click)="editor.set(null)">
+        ×
+      </button>
+    </header>
+    <form (submit)="save($event)">
+      <div class="settings-form-grid">
+        <label
+          ><span>Nombre completo <b>*</b></span
+          ><input
+            type="text"
+            required
+            autocomplete="off"
+            [ngModel]="draft().fullName"
+            (ngModelChange)="setDraft('fullName', $event)"
+            name="fullName"
+        /></label>
+        <label
+          ><span>Correo electrónico <b>*</b></span
+          ><input
+            type="email"
+            required
+            autocomplete="off"
+            [ngModel]="draft().email"
+            (ngModelChange)="setDraft('email', $event)"
+            name="email"
+        /></label>
+        <label
+          ><span>Teléfono</span
+          ><input
+            type="tel"
+            [ngModel]="draft().phone"
+            (ngModelChange)="setDraft('phone', $event)"
+            name="phone"
+        /></label>
+        <label
+          ><span>Idioma</span
+          ><span class="settings-select"
+            ><select
+              [ngModel]="draft().preferredLanguage"
+              (ngModelChange)="setDraft('preferredLanguage', $event)"
+              name="language"
+            >
+              <option value="es">Español</option>
+              <option value="en">English</option></select
+            ><i>⌄</i></span
+          ></label
+        >
+        <label class="settings-field--wide"
+          ><span>Rol <b>*</b></span
+          ><span class="settings-select"
+            ><select
+              required
+              [disabled]="current.id === currentUserId()"
+              [ngModel]="draft().roleId"
+              (ngModelChange)="setDraft('roleId', $event)"
+              name="roleId"
+            >
+              @for (role of access.roles(); track role.id) {
+                <option [value]="role.id">
+                  {{ role.name }} · {{ access.userCountByRole().get(role.id) ?? 0 }} usuario(s)
+                </option>
+              }</select
+            ><i>⌄</i></span
+          >
+          @if (current.id === currentUserId()) {
+            <small class="users-hint">No puedes cambiar tu propio rol.</small>
+          } @else if (access.role(draft().roleId); as role) {
+            <small class="users-hint">{{ role.description }}</small>
+          }
+        </label>
+      </div>
+      @if (formError()) {
+        <p class="users-error" role="alert">{{ formError() }}</p>
+      }
+      <footer>
+        <button type="button" class="button" (click)="editor.set(null)">Cancelar</button
+        ><button class="button button--primary" type="submit" [disabled]="saving()">
+          {{ current.id ? 'Guardar cambios' : 'Invitar y generar acceso' }}
+        </button>
+      </footer>
+    </form>
+  </section>
+}
+
+@if (confirm(); as pending) {
+  <button class="confirm-backdrop" type="button" aria-label="Cancelar" (click)="confirm.set(null)"></button>
+  <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+    <span class="confirm-dialog__icon">{{ pending.kind === 'reset' ? '⟲' : '⊘' }}</span>
+    <div>
+      <span class="confirm-dialog__eyebrow">USUARIOS</span>
+      @switch (pending.kind) {
+        @case ('suspend') {
+          <h2>¿Suspender a {{ pending.user.fullName }}?</h2>
+          <p>
+            Pierde el acceso de inmediato, aunque tenga la sesión abierta. Sus registros y su
+            historial se conservan y puedes reactivarlo cuando quieras.
+          </p>
+        }
+        @case ('delete') {
+          <h2>¿Eliminar a {{ pending.user.fullName }}?</h2>
+          <p>
+            Se elimina la cuenta. Los registros donde aparece como responsable se conservan.
+            Si solo quieres quitarle el acceso, mejor suspéndelo.
+          </p>
+          <div class="confirm-dialog__warning">
+            <span>!</span>
+            <p>Esta acción no se puede deshacer.</p>
+          </div>
+        }
+        @case ('reset') {
+          <h2>¿Restablecer la contraseña?</h2>
+          <p>
+            Se generará una contraseña temporal para <b>{{ pending.user.fullName }}</b> y la actual
+            dejará de funcionar.
+          </p>
+        }
+      }
+      @if (confirmError()) {
+        <p class="users-error" role="alert">{{ confirmError() }}</p>
+      }
+    </div>
+    <footer>
+      <button class="button" type="button" (click)="confirm.set(null)">No, cancelar</button>
+      <button
+        class="button"
+        type="button"
+        [class.button--danger]="pending.kind !== 'reset'"
+        [class.button--primary]="pending.kind === 'reset'"
+        (click)="runConfirm()"
+      >
+        {{
+          pending.kind === 'suspend'
+            ? 'Sí, suspender'
+            : pending.kind === 'delete'
+              ? 'Sí, eliminar'
+              : 'Sí, generar contraseña'
+        }}
+      </button>
+    </footer>
+  </section>
+}
+
+@if (credentials(); as issued) {
+  <div class="cred-overlay" (click)="credentials.set(null)">
+    <section
+      class="cred-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cred-title"
+      (click)="$event.stopPropagation()"
+    >
+      <header class="cred-header">
+        <div>
+          <span class="cred-eyebrow">{{
+            issued.reason === 'invite' ? 'Invitación lista' : 'Contraseña restablecida'
+          }}</span>
+          <h2 id="cred-title">Datos de acceso de {{ issued.user.fullName }}</h2>
+          <p>Comparte estos datos con la persona. La contraseña no se volverá a mostrar.</p>
+        </div>
+        <button class="cred-close" type="button" aria-label="Cerrar" (click)="credentials.set(null)">
+          ×
+        </button>
+      </header>
+
+      <div class="cred-body">
+        <dl class="cred-list">
+          <div>
+            <dt>Acceso</dt>
+            <dd>{{ loginUrl() }}</dd>
+          </div>
+          <div>
+            <dt>Usuario</dt>
+            <dd>{{ issued.user.email }}</dd>
+          </div>
+          <div>
+            <dt>Contraseña temporal</dt>
+            <dd><code class="cred-password">{{ issued.password }}</code></dd>
+          </div>
+          <div>
+            <dt>Rol</dt>
+            <dd>{{ roleName(issued.user.roleId) }}</dd>
+          </div>
+        </dl>
+        <p class="cred-hint">
+          Al entrar por primera vez la invitación queda aceptada. La persona puede cambiar su
+          contraseña desde «Ver perfil».
+        </p>
+      </div>
+
+      <footer class="cred-footer">
+        <button class="button" type="button" (click)="copyCredentials()">
+          {{ copied() ? '✓ Copiado' : '⧉ Copiar datos' }}
+        </button>
+        <button
+          class="button"
+          type="button"
+          [disabled]="emailSent()"
+          (click)="composeCredentialsEmail()"
+        >
+          {{ emailSent() ? '✓ Correo enviado' : '✉ Enviar por correo' }}
+        </button>
+        <button class="button button--primary" type="button" (click)="credentials.set(null)">
+          Listo
+        </button>
+      </footer>
+    </section>
+  </div>
+}
+
+@if (emailSeed(); as seed) {
+  <app-lead-email-modal
+    [seed]="seed"
+    [composeKey]="emailKey()"
+    (closed)="emailSeed.set(null)"
+    (submitted)="emailSubmitted($event.value, $event.draft)"
+  />
+}
+
+@if (toast()) {
+  <div class="settings-toast"><span>✓</span>{{ toast() }}</div>
+}

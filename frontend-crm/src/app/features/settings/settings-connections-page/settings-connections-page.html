@@ -1,0 +1,463 @@
+<header class="settings-header settings-header--section">
+  <div>
+    <div class="breadcrumbs">
+      <a routerLink="/settings">Ajustes</a><b>›</b><span>Integraciones</span><b>›</b
+      ><span>Conexiones</span>
+    </div>
+    <div class="settings-title">
+      <span class="settings-icon settings-icon--large"
+        ><img src="/icons/settings/fi-rr-cube.svg" alt=""
+      /></span>
+      <div>
+        <h1>Conexiones externas</h1>
+        <p>Servicios de terceros que usa el CRM y en qué pantallas se nota cada uno.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="conn-summary">
+  <div><b>{{ summary().working }}</b><span>Funcionando</span></div>
+  <div><b>{{ summary().waiting }}</b><span>En espera del servidor o en demostración</span></div>
+  <div [class.is-alert]="summary().attention > 0">
+    <b>{{ summary().attention }}</b><span>Con datos faltantes</span>
+  </div>
+  <div><b>{{ summary().off }}</b><span>Sin configurar</span></div>
+</section>
+
+@if (!store.apiBaseUrl) {
+  <p class="conn-banner">
+    <b>El CRM está en modo demostración.</b> Sin servidor, lo que captures aquí se guarda solo en
+    este navegador. Las llaves privadas de pagos y timbrado no se guardan: solo se registra que se
+    capturaron.
+  </p>
+}
+@if (!canEdit()) {
+  <p class="channel-readonly">Tu rol solo permite consultar estas conexiones.</p>
+}
+
+@for (group of groups(); track group.name) {
+  <section class="conn-group">
+    <h2>{{ group.name }}</h2>
+    <div class="conn-grid">
+      @for (card of group.cards; track card.key) {
+        <article class="settings-content-card conn-card">
+          <header>
+            <span class="conn-mark conn-mark--{{ card.tone }}">{{ card.mark }}</span>
+            <div>
+              <h3>{{ card.name }}</h3>
+              <small>{{ card.provider }}</small>
+            </div>
+            <span class="settings-status settings-status--{{ statusTone(card.key) }}"
+              ><i></i>{{ statusLabel(card.key) }}</span
+            >
+          </header>
+          <p>{{ card.description }}</p>
+          <ul class="conn-used" aria-label="Se usa en">
+            @for (place of card.usedIn; track place) {
+              <li>{{ place }}</li>
+            }
+          </ul>
+          <footer>
+            <small
+              >{{ statusNote(card.key) }}
+              @if (card.updatedAt) {
+                <br />Modificado {{ card.updatedAt | date: 'dd MMM y' }} · {{ card.updatedBy }}
+              }
+            </small>
+            <button class="button" type="button" (click)="configure(card.key)">
+              {{ canEdit() && card.key !== 'speedlink-api' ? 'Configurar' : 'Ver detalle' }}
+            </button>
+          </footer>
+        </article>
+      }
+    </div>
+  </section>
+}
+
+@if (openCard(); as card) {
+  <button class="settings-modal-backdrop" type="button" aria-label="Cerrar" (click)="close()"></button>
+  <section class="settings-modal conn-dialog" role="dialog" aria-modal="true" [attr.aria-label]="card.name">
+    <header>
+      <div>
+        <span>Conexión</span>
+        <h2>{{ card.name }}</h2>
+        <p>{{ card.description }}</p>
+      </div>
+      <button class="icon-button" type="button" aria-label="Cerrar" (click)="close()">×</button>
+    </header>
+
+    <form (submit)="save($event)" novalidate>
+      <fieldset class="conn-body" [disabled]="!canEdit()">
+        @switch (card.key) {
+          @case ('speedlink-api') {
+            <dl class="conn-facts">
+              <div>
+                <dt>Dirección</dt>
+                <dd>{{ store.apiBaseUrl || 'Sin servidor configurado' }}</dd>
+              </div>
+              <div>
+                <dt>Dónde se cambia</dt>
+                <dd>
+                  En el archivo <code>runtime-config.js</code> del despliegue (<code>apiBaseUrl</code>).
+                  No se edita desde el navegador para que nadie pueda desviar los datos a otro servidor.
+                </dd>
+              </div>
+            </dl>
+            <div class="conn-note">
+              <b>Qué depende del servidor</b>
+              <ul>
+                <li>Guardar los datos para todo el equipo (hoy viven en cada navegador).</li>
+                <li>Enviar de verdad los correos (SMTP) y SMS.</li>
+                <li>Resguardar y mostrar contraseñas de equipos y WiFi.</li>
+                <li>Cobrar en línea y timbrar facturas.</li>
+              </ul>
+            </div>
+            <div class="conn-test">
+              <button
+                class="button"
+                type="button"
+                [disabled]="!store.apiBaseUrl || apiTesting()"
+                (click)="testApi()"
+              >
+                {{ apiTesting() ? 'Probando…' : 'Probar conexión' }}
+              </button>
+              @if (apiResult(); as result) {
+                <span [class.conn-ok]="result.ok" [class.channel-error]="!result.ok">{{
+                  result.message
+                }}</span>
+              } @else if (!store.apiBaseUrl) {
+                <span class="channel-hint">No hay servidor que probar.</span>
+              }
+            </div>
+          }
+
+          @case ('google-maps') {
+            <div class="channel-grid conn-grid-form">
+              <label class="channel-wide" [class.has-error]="!!mapsError()"
+                ><span>API key de Google Maps</span
+                ><input
+                  name="mapsKey"
+                  autocomplete="off"
+                  spellcheck="false"
+                  [placeholder]="
+                    store.deployedMapsKey
+                      ? 'Vacío = usar la del despliegue (…' + deployedKeyTail + ')'
+                      : 'AIza…'
+                  "
+                  [ngModel]="mapsKey()"
+                  (ngModelChange)="mapsKey.set($event); saveError.set('')"
+                />
+                @if (mapsError(); as message) {
+                  <small class="channel-error">{{ message }}</small>
+                } @else {
+                  <small class="channel-hint">
+                    @if (mapsKey().trim()) {
+                      Se usará esta llave en lugar de la del despliegue.
+                    } @else if (store.deployedMapsKey) {
+                      Se usa la llave del despliegue, terminación …{{ deployedKeyTail }}.
+                    } @else {
+                      Sin llave, el Dashboard muestra un mapa esquemático.
+                    }
+                  </small>
+                }
+              </label>
+            </div>
+            @if (mapsKey().trim() && store.deployedMapsKey && canEdit()) {
+              <button class="conn-link" type="button" (click)="useDeployedMapsKey()">
+                Volver a la llave del despliegue
+              </button>
+            }
+            <div class="conn-note">
+              <b>Protege la llave</b>
+              <p>
+                Esta llave se envía al navegador de cada usuario, así que no es secreta. En Google
+                Cloud restríngela a tu dominio (referentes HTTP) y solo a «Maps JavaScript API» para
+                que nadie más la use con tu cuenta.
+              </p>
+            </div>
+          }
+
+          @case ('whatsapp') {
+            <div class="channel-grid conn-grid-form">
+              <label [class.has-error]="!!countryError()"
+                ><span>Lada de país <b>*</b></span
+                ><span class="conn-prefix"
+                  ><i>+</i
+                  ><input
+                    name="countryCode"
+                    inputmode="numeric"
+                    maxlength="3"
+                    [ngModel]="countryCode()"
+                    (ngModelChange)="countryCode.set($event); saveError.set('')"
+                /></span>
+                @if (countryError(); as message) {
+                  <small class="channel-error">{{ message }}</small>
+                } @else {
+                  <small class="channel-hint">Se antepone a los teléfonos capturados a 10 dígitos.</small>
+                }
+              </label>
+              <label
+                ><span>Prueba con un teléfono</span
+                ><input
+                  name="samplePhone"
+                  inputmode="tel"
+                  [ngModel]="samplePhone()"
+                  (ngModelChange)="samplePhone.set($event)"
+                />
+                <small class="channel-hint">{{ samplePreview() ? 'Abre ' + samplePreview() : '—' }}</small>
+              </label>
+            </div>
+            <div class="conn-note">
+              <b>Cómo funciona</b>
+              <p>
+                El CRM abre WhatsApp con el mensaje ya escrito y tú lo envías desde tu cuenta. Los
+                avisos automáticos (sin intervención) necesitan la API de WhatsApp Business de Meta y
+                el servidor.
+              </p>
+            </div>
+          }
+
+          @case ('payments') {
+            <div class="conn-toggle">
+              <div>
+                <b>Cobro en línea</b>
+                <small>Apágalo para dejar de ofrecer el enlace de pago sin perder la configuración.</small>
+              </div>
+              <label class="channel-switch"
+                ><input
+                  type="checkbox"
+                  name="paymentsEnabled"
+                  [ngModel]="payments().enabled"
+                  (ngModelChange)="setPayments('enabled', $event)"
+                /><i></i><span>{{ payments().enabled ? 'Activo' : 'Inactivo' }}</span></label
+              >
+            </div>
+            <div class="channel-grid conn-grid-form">
+              <label
+                ><span>Proveedor</span
+                ><span class="settings-select"
+                  ><select
+                    name="paymentProvider"
+                    [ngModel]="payments().provider"
+                    (ngModelChange)="setPayments('provider', $event)"
+                  >
+                    @for (option of paymentProviders; track option.value) {
+                      <option [value]="option.value">{{ option.label }}</option>
+                    }</select
+                  ><i>⌄</i></span
+                ></label
+              >
+              <div class="conn-mode" role="radiogroup" aria-label="Modo">
+                <span>Modo</span>
+                <div>
+                  <button
+                    type="button"
+                    [class.is-on]="payments().mode === 'sandbox'"
+                    (click)="setPayments('mode', 'sandbox')"
+                  >
+                    Pruebas
+                  </button>
+                  <button
+                    type="button"
+                    [class.is-on]="payments().mode === 'production'"
+                    (click)="setPayments('mode', 'production')"
+                  >
+                    Producción
+                  </button>
+                </div>
+              </div>
+              <label class="channel-wide" [class.has-error]="!!paymentError('publicKey')"
+                ><span>{{ paymentProvider().publicLabel }} <b>*</b></span
+                ><input
+                  name="publicKey"
+                  autocomplete="off"
+                  spellcheck="false"
+                  [ngModel]="payments().publicKey"
+                  (ngModelChange)="setPayments('publicKey', $event)"
+                />
+                @if (paymentError('publicKey'); as message) {
+                  <small class="channel-error">{{ message }}</small>
+                }
+              </label>
+              <label class="channel-wide" [class.has-error]="!!paymentError('secret')"
+                ><span>{{ paymentProvider().secretLabel }} <b>*</b></span>
+                @if (changingSecret()) {
+                  <input
+                    name="paymentSecret"
+                    type="password"
+                    autocomplete="new-password"
+                    [ngModel]="newSecret()"
+                    (ngModelChange)="newSecret.set($event); saveError.set('')"
+                  />
+                } @else {
+                  <span class="channel-secret"
+                    ><span>●●●●●●●● {{ store.state().payments.secretTail }}</span
+                    ><button type="button" (click)="changingSecret.set(true)">Cambiar</button></span
+                  >
+                }
+                @if (paymentError('secret'); as message) {
+                  <small class="channel-error">{{ message }}</small>
+                } @else {
+                  <small class="channel-hint"
+                    >Se enviará al servidor; aquí solo se guardan sus últimos 4 caracteres.</small
+                  >
+                }
+              </label>
+            </div>
+            @if (payments().mode === 'production') {
+              <p class="conn-warning">En producción los cobros son reales.</p>
+            }
+          }
+
+          @case ('cfdi') {
+            <div class="conn-toggle">
+              <div>
+                <b>Timbrado de facturas</b>
+                <small>Con el timbrado activo, cada factura emitida se envía al SAT por el PAC.</small>
+              </div>
+              <label class="channel-switch"
+                ><input
+                  type="checkbox"
+                  name="cfdiEnabled"
+                  [ngModel]="cfdi().enabled"
+                  (ngModelChange)="setCfdi('enabled', $event)"
+                /><i></i><span>{{ cfdi().enabled ? 'Activo' : 'Inactivo' }}</span></label
+              >
+            </div>
+            <div class="channel-grid conn-grid-form">
+              <label
+                ><span>Proveedor (PAC)</span
+                ><span class="settings-select"
+                  ><select
+                    name="cfdiProvider"
+                    [ngModel]="cfdi().provider"
+                    (ngModelChange)="setCfdi('provider', $event)"
+                  >
+                    @for (option of cfdiProviders; track option.value) {
+                      <option [value]="option.value">{{ option.label }}</option>
+                    }</select
+                  ><i>⌄</i></span
+                ></label
+              >
+              <div class="conn-mode" role="radiogroup" aria-label="Modo">
+                <span>Modo</span>
+                <div>
+                  <button type="button" [class.is-on]="cfdi().mode === 'sandbox'" (click)="setCfdi('mode', 'sandbox')">
+                    Pruebas
+                  </button>
+                  <button
+                    type="button"
+                    [class.is-on]="cfdi().mode === 'production'"
+                    (click)="setCfdi('mode', 'production')"
+                  >
+                    Producción
+                  </button>
+                </div>
+              </div>
+              <label [class.has-error]="!!cfdiError('username')"
+                ><span>{{ cfdiProvider().userLabel }} <b>*</b></span
+                ><input
+                  name="cfdiUser"
+                  autocomplete="off"
+                  [ngModel]="cfdi().username"
+                  (ngModelChange)="setCfdi('username', $event)"
+                />
+                @if (cfdiError('username'); as message) {
+                  <small class="channel-error">{{ message }}</small>
+                }
+              </label>
+              <label [class.has-error]="!!cfdiError('secret')"
+                ><span>{{ cfdiProvider().secretLabel }} <b>*</b></span>
+                @if (changingSecret()) {
+                  <input
+                    name="cfdiSecret"
+                    type="password"
+                    autocomplete="new-password"
+                    [ngModel]="newSecret()"
+                    (ngModelChange)="newSecret.set($event); saveError.set('')"
+                  />
+                } @else {
+                  <span class="channel-secret"
+                    ><span>●●●●●●●● {{ store.state().cfdi.secretTail }}</span
+                    ><button type="button" (click)="changingSecret.set(true)">Cambiar</button></span
+                  >
+                }
+                @if (cfdiError('secret'); as message) {
+                  <small class="channel-error">{{ message }}</small>
+                }
+              </label>
+            </div>
+            <div class="conn-note" [class.conn-note--alert]="organization().problems.length > 0">
+              <b>Emisor (de Ajustes › Organización)</b>
+              <dl class="conn-facts conn-facts--compact">
+                <div><dt>RFC</dt><dd>{{ organization().profile.rfc || '—' }}</dd></div>
+                <div><dt>Razón social</dt><dd>{{ organization().profile.legalName || '—' }}</dd></div>
+                <div><dt>Régimen</dt><dd>{{ organization().regime || '—' }}</dd></div>
+                <div><dt>C.P. fiscal</dt><dd>{{ organization().profile.fiscalPostalCode || '—' }}</dd></div>
+                <div><dt>Serie</dt><dd>{{ organization().profile.invoiceSeries || '—' }}</dd></div>
+              </dl>
+              @if (organization().problems.length) {
+                <p class="channel-error">
+                  {{ organization().problems.join(' ') }}
+                  <a routerLink="/settings/organization" (click)="close()">Completar datos fiscales</a>
+                </p>
+              }
+            </div>
+            @if (cfdi().mode === 'production') {
+              <p class="conn-warning">En producción cada timbre tiene costo y validez fiscal.</p>
+            }
+          }
+        }
+      </fieldset>
+
+      @if (saveError()) {
+        <p class="channel-error conn-save-error" role="alert">{{ saveError() }}</p>
+      }
+      <footer>
+        @if (
+          canEdit() &&
+          ((card.key === 'payments' && store.state().payments.secretTail) ||
+            (card.key === 'cfdi' && store.state().cfdi.secretTail))
+        ) {
+          <button
+            type="button"
+            class="button button--danger conn-disconnect"
+            (click)="disconnecting.set(card.key === 'payments' ? 'payments' : 'cfdi')"
+          >
+            Desconectar
+          </button>
+        }
+        <button type="button" class="button" (click)="close()">
+          {{ canEdit() && card.key !== 'speedlink-api' ? 'Cancelar' : 'Cerrar' }}
+        </button>
+        @if (canEdit() && card.key !== 'speedlink-api') {
+          <button class="button button--primary" type="submit">Guardar</button>
+        }
+      </footer>
+    </form>
+  </section>
+}
+
+@if (disconnecting(); as key) {
+  <button class="confirm-backdrop conn-confirm-backdrop" type="button" aria-label="Cancelar" (click)="disconnecting.set(null)"></button>
+  <section class="confirm-dialog conn-confirm" role="alertdialog" aria-modal="true">
+    <span class="confirm-dialog__icon">⊘</span>
+    <div>
+      <span class="confirm-dialog__eyebrow">CONEXIÓN</span>
+      <h2>¿Desconectar {{ key === 'payments' ? 'los pagos en línea' : 'el timbrado CFDI' }}?</h2>
+      <p>
+        Se apaga la integración y se olvida la llave registrada. Para volver a conectarla tendrás
+        que capturarla de nuevo.
+      </p>
+    </div>
+    <footer>
+      <button class="button" type="button" (click)="disconnecting.set(null)">No, cancelar</button>
+      <button class="button button--danger" type="button" (click)="confirmDisconnect()">Sí, desconectar</button>
+    </footer>
+  </section>
+}
+
+@if (toast()) {
+  <div class="settings-toast"><span>✓</span>{{ toast() }}</div>
+}

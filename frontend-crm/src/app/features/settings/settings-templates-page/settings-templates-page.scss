@@ -349,6 +349,15 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
+
+  .preview-html {
+    width: 100%;
+    min-height: 360px;
+    display: block;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: #fff;
+  }
 }
 
 .preview-subject {
@@ -381,5 +390,119 @@
     .template-date {
       display: none;
     }
+  }
+}
+
+/* --- Filtros, plantillas del sistema y validación --- */
+.template-toolbar {
+  flex-wrap: wrap;
+}
+.template-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+
+  select {
+    height: 38px;
+    padding: 0 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 12px;
+  }
+}
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.template-system {
+  margin-left: 6px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: #f5f3ff;
+  color: #6d28d9;
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 700;
+}
+.template-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.template-usage {
+  margin: 0;
+  padding: 10px 20px;
+  border-bottom: 1px solid #ddd6fe;
+  background: #f5f3ff;
+  color: #5b21b6;
+  font-size: 12px;
+}
+fieldset.template-form {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.template-error {
+  margin: 0 20px 12px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 600;
+}
+.template-test {
+  margin-right: auto;
+}
+.preview-segments {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #ecfdf5;
+  color: #166534;
+  font-size: 11.5px;
+
+  small {
+    display: block;
+    margin-top: 3px;
+  }
+}
+.preview-segments.is-multi {
+  background: #fffbeb;
+  color: #92400e;
+}
+.template-editor {
+  position: relative;
+}
+.template-discard {
+  position: absolute;
+  right: 20px;
+  bottom: 70px;
+  z-index: 5;
+  width: min(340px, calc(100% - 40px));
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: 0 16px 40px rgb(15 23 42 / 22%);
+
+  p {
+    margin: 4px 0 12px;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+  }
+  > div {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
   }
 }

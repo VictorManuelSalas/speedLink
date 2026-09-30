@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { LanguageService } from '../core/i18n/language.service';
+import { FloatingPanel } from './floating-panel';
 
 interface CalendarDay {
   readonly key: string;
@@ -21,6 +22,7 @@ let activeDateField: InlineEditableDateField | null = null;
 
 @Component({
   selector: 'app-inline-editable-date-field',
+  imports: [FloatingPanel],
   templateUrl: './inline-editable-date-field.html',
   styleUrl: './inline-editable-date-field.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

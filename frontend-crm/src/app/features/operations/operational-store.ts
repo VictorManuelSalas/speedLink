@@ -1,12 +1,26 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, effect, inject, signal } from '@angular/core';
+import { DeviceAccessStore } from '../../core/equipment/device-access.store';
 import { CUSTOMERS } from '../../core/data-access/mock-crm-data';
 import { CrmAttachment } from '../../core/models/customer';
-import { SYSTEM_USER_LABELS } from '../../core/data-access/system-users';
+import { systemUserName } from '../../core/data-access/system-users';
 import {
   OPERATIONAL_MODULES,
   OperationalModuleKey,
   OperationalRecord,
 } from './operational-modules.data';
+import { moduleDefinition } from './module-registry';
+import { isCustomModuleKey } from '../../core/modules/custom-modules.model';
+
+/** Los datos de demo de los nativos viven en memoria; lo creado por el usuario, no. */
+const CUSTOM_RECORDS_KEY = 'speedlink-custom-module-records';
+
+function readCustomRecords(): Record<string, ReadonlyArray<OperationalRecord>> {
+  try {
+    return JSON.parse(localStorage.getItem(CUSTOM_RECORDS_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+}
 
 const CUSTOMER_EQUIPMENT_RECORDS: ReadonlyArray<OperationalRecord> = CUSTOMERS.flatMap(
   (customer) =>
@@ -58,33 +72,46 @@ export interface OperationalEmail {
 
 @Injectable({ providedIn: 'root' })
 export class OperationalStore {
-  readonly records = signal<
-    Readonly<Record<OperationalModuleKey, ReadonlyArray<OperationalRecord>>>
-  >(
-    Object.fromEntries(
+  readonly records = signal<Readonly<Record<string, ReadonlyArray<OperationalRecord>>>>({
+    ...Object.fromEntries(
       Object.entries(OPERATIONAL_MODULES).map(([key, definition]) => [
         key,
         key === 'equipment'
           ? [...definition.records, ...CUSTOMER_EQUIPMENT_RECORDS]
           : [...definition.records],
       ]),
-    ) as unknown as Record<OperationalModuleKey, ReadonlyArray<OperationalRecord>>,
-  );
+    ),
+    ...readCustomRecords(),
+  });
+
+  constructor() {
+    effect(() => {
+      const custom = Object.fromEntries(
+        Object.entries(this.records()).filter(([key]) => isCustomModuleKey(key)),
+      );
+      try {
+        localStorage.setItem(CUSTOM_RECORDS_KEY, JSON.stringify(custom));
+      } catch {
+        // Sin almacenamiento los registros duran sólo esta sesión.
+      }
+    });
+  }
+  private readonly deviceAccess = inject(DeviceAccessStore);
   readonly notes = signal<Readonly<Record<string, ReadonlyArray<OperationalNote>>>>({});
   readonly activity = signal<Readonly<Record<string, ReadonlyArray<OperationalActivity>>>>({});
   readonly recordAttachments = signal<Readonly<Record<string, ReadonlyArray<CrmAttachment>>>>({});
   readonly emails = signal<Readonly<Record<string, ReadonlyArray<OperationalEmail>>>>({});
 
   recordsFor(module: OperationalModuleKey): ReadonlyArray<OperationalRecord> {
-    return this.records()[module];
+    return this.records()[module] ?? [];
   }
 
   find(module: OperationalModuleKey, id: string): OperationalRecord | undefined {
-    return this.records()[module].find((record) => record.id === id);
+    return this.recordsFor(module).find((record) => record.id === id);
   }
 
   add(module: OperationalModuleKey, record: OperationalRecord): void {
-    this.records.update((state) => ({ ...state, [module]: [record, ...state[module]] }));
+    this.records.update((state) => ({ ...state, [module]: [record, ...(state[module] ?? [])] }));
     this.addActivity(
       record.id,
       'Registro creado',
@@ -99,11 +126,21 @@ export class OperationalStore {
     const previous = this.find(module, id);
     this.records.update((state) => ({
       ...state,
-      [module]: state[module].map((record) =>
+      [module]: (state[module] ?? []).map((record) =>
         record.id === id ? { ...record, ...changes, updatedAt: new Date().toISOString() } : record,
       ),
     }));
-    const definition = OPERATIONAL_MODULES[module];
+    // Un equipo devuelto conoció a otro cliente/técnico: sus credenciales y su
+    // WiFi deben cambiarse antes de volver a instalarlo.
+    if (
+      module === 'assignments' &&
+      changes['status'] === 'RETURNED' &&
+      previous?.['status'] !== 'RETURNED' &&
+      previous?.['equipmentId']
+    )
+      this.deviceAccess.markReturned(String(previous['equipmentId']), 'Sistema (devolución)');
+    const definition = moduleDefinition(module);
+    if (!definition) return;
     // Los ids sombra de los lookups (`schemaKey`) no se muestran en la ficha,
     // así que tampoco tienen por qué aparecer en la bitácora.
     const shadowIdKeys = new Set(
@@ -119,7 +156,7 @@ export class OperationalStore {
         const readable = (raw: unknown): string => {
           const text = String(raw ?? '');
           if (!text) return '—';
-          return SYSTEM_USER_LABELS[text] ?? text;
+          return systemUserName(text) ?? text;
         };
         return `${label}: ${readable(previous?.[key])} → ${readable(value)}`;
       })
@@ -130,7 +167,7 @@ export class OperationalStore {
   archive(module: OperationalModuleKey, id: string): void {
     this.records.update((state) => ({
       ...state,
-      [module]: state[module].filter((record) => record.id !== id),
+      [module]: (state[module] ?? []).filter((record) => record.id !== id),
     }));
   }
 
@@ -366,7 +403,15 @@ export class OperationalStore {
     this.logActivity(id, title, detail, tone, module, actionType);
   }
 
+  /** Borra todos los registros de un módulo personalizado que se elimina. */
+  clearModule(module: OperationalModuleKey): void {
+    this.records.update((state) => {
+      const { [module]: _removed, ...rest } = state;
+      return rest;
+    });
+  }
+
   private moduleLabel(module: OperationalModuleKey): string {
-    return OPERATIONAL_MODULES[module].title;
+    return moduleDefinition(module)?.title ?? module;
   }
 }

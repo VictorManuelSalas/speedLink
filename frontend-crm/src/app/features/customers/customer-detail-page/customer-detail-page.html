@@ -18,12 +18,172 @@
         [subtitle]="customerSubtitle(c)"
       >
         <div record-actions>
+          <div class="share-menu">
+            <button
+              class="button"
+              type="button"
+              [attr.aria-expanded]="inviteMenuOpen()"
+              aria-haspopup="menu"
+              (click)="toggleInviteMenu($event, c)"
+            >
+              <i class="portal-dot portal-dot--{{ portalStatus(c) }}" aria-hidden="true"></i>
+              Invite Portal
+            </button>
+            @if (inviteMenuOpen()) {
+              <div class="share-menu__panel" role="menu" (click)="$event.stopPropagation()">
+                <div class="portal-access-summary">
+                  <b
+                    >Acceso al portal ·
+                    <em class="portal-status--{{ portalStatus(c) }}">{{
+                      portalStatusLabel(c)
+                    }}</em></b
+                  >
+                  <small>
+                    Usuario {{ c.id }} · PIN {{ portalAccessInfo(c)?.pin }}
+                    @if (portalAccessInfo(c)?.updatedAt; as changedAt) {
+                      <br />Último cambio {{ changedAt | date: 'dd MMM y, HH:mm' : '' : i18n.locale() }}
+                      · {{ portalAccessInfo(c)?.updatedBy }}
+                    }
+                  </small>
+                </div>
+
+                @if (portalStatus(c) === 'disabled') {
+                  <button type="button" role="menuitem" (click)="openPortalDialog('enable')">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="5" y="11" width="14" height="9" rx="2" />
+                      <path d="M8 11V8a4 4 0 0 1 7.5-2" />
+                    </svg>
+                    <span><b>Habilitar acceso</b><small>El cliente podrá volver a entrar</small></span>
+                  </button>
+                } @else {
+                  <button type="button" role="menuitem" (click)="inviteToPortalByEmail(c)">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="3" y="5" width="18" height="14" rx="2" />
+                      <path d="m3 7 9 6 9-6" />
+                    </svg>
+                    <span
+                      ><b>{{ portalStatus(c) === 'active' ? 'Reenviar' : 'Enviar' }} por correo</b
+                      ><small>Abre el correo con la plantilla</small></span
+                    >
+                  </button>
+                  <a
+                    role="menuitem"
+                    [href]="portalInviteWhatsappUrl(c)"
+                    target="_blank"
+                    rel="noopener"
+                    (click)="inviteToPortalByWhatsapp(c)"
+                  >
+                    <svg class="whatsapp" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M20 11.6a8 8 0 0 1-11.8 7l-4.2 1 1.1-4A8 8 0 1 1 20 11.6Z" />
+                      <path
+                        d="M8.5 7.8c.3-.4.6-.3.9-.1l1.1 2c.1.3 0 .5-.2.7l-.6.6c.7 1.5 1.8 2.6 3.3 3.2l.6-.7c.2-.2.5-.3.7-.2l2 1c.3.2.4.5.3.8-.3 1-1.2 1.7-2.3 1.7-3.5-.3-7.4-4.2-7.7-7.7 0-.5.3-1 .6-1.3Z"
+                      />
+                    </svg>
+                    <span
+                      ><b>{{ portalStatus(c) === 'active' ? 'Reenviar' : 'Enviar' }} por WhatsApp</b
+                      ><small>Elige a quién mandarlo</small></span
+                    >
+                  </a>
+                  @if (portalStatus(c) === 'active') {
+                    <button type="button" role="menuitem" (click)="openPortalDialog('regenerate')">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M20 11a8 8 0 1 0-2.3 5.7" />
+                        <path d="M20 5v6h-6" />
+                      </svg>
+                      <span><b>Generar nuevo PIN</b><small>El PIN actual deja de funcionar</small></span>
+                    </button>
+                    <button
+                      class="danger"
+                      type="button"
+                      role="menuitem"
+                      (click)="openPortalDialog('disable')"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="8" />
+                        <path d="m6.5 6.5 11 11" />
+                      </svg>
+                      <span><b>Deshabilitar acceso</b><small>Bloquea el inicio de sesión</small></span>
+                    </button>
+                  }
+                }
+              </div>
+            }
+          </div>
           <button class="button" (click)="composeMessage()">✉ Enviar mensaje</button
           ><button class="button button--primary" (click)="registerPayment(c)">
             ＋ Registrar pago
           </button>
         </div>
       </app-record-header>
+      @if (portalDialog(); as dialog) {
+        <button
+          class="confirm-backdrop"
+          type="button"
+          aria-label="Cancelar"
+          (click)="portalDialog.set(null)"
+        ></button>
+        <section class="confirm-dialog" role="alertdialog" aria-modal="true">
+          @if (dialog === 'disable') {
+            <span class="confirm-dialog__icon">⊘</span>
+            <div>
+              <span class="confirm-dialog__eyebrow">PORTAL DE CLIENTES</span>
+              <h2>¿Deshabilitar el acceso?</h2>
+              <p>
+                <b>{{ c.name }}</b> ya no podrá iniciar sesión en el portal. Su PIN se conserva, así
+                que puedes volver a habilitarlo sin reenviar la invitación.
+              </p>
+            </div>
+            <footer>
+              <button class="button" type="button" (click)="portalDialog.set(null)">
+                No, cancelar
+              </button>
+              <button class="button button--danger" type="button" (click)="disablePortalAccess(c)">
+                Sí, deshabilitar
+              </button>
+            </footer>
+          } @else if (dialog === 'enable') {
+            <span class="confirm-dialog__icon confirm-dialog__icon--ok">✓</span>
+            <div>
+              <span class="confirm-dialog__eyebrow">PORTAL DE CLIENTES</span>
+              <h2>Habilitar acceso</h2>
+              <p>
+                ¿<b>{{ c.name }}</b> conserva su PIN anterior o le generamos uno nuevo? Con un PIN
+                nuevo tendrás que reenviarle la invitación.
+              </p>
+            </div>
+            <footer>
+              <button class="button" type="button" (click)="enablePortalAccess(c, true)">
+                Generar PIN nuevo
+              </button>
+              <button
+                class="button button--primary"
+                type="button"
+                (click)="enablePortalAccess(c, false)"
+              >
+                Conservar PIN
+              </button>
+            </footer>
+          } @else {
+            <span class="confirm-dialog__icon">↻</span>
+            <div>
+              <span class="confirm-dialog__eyebrow">PORTAL DE CLIENTES</span>
+              <h2>¿Generar un nuevo PIN?</h2>
+              <p>
+                El PIN actual de <b>{{ c.name }}</b> dejará de funcionar. Después reenvíale la
+                invitación con el PIN nuevo.
+              </p>
+            </div>
+            <footer>
+              <button class="button" type="button" (click)="portalDialog.set(null)">
+                No, cancelar
+              </button>
+              <button class="button button--primary" type="button" (click)="regeneratePortalPin(c)">
+                Sí, generar PIN
+              </button>
+            </footer>
+          }
+        </section>
+      }
       <app-record-summary>
         <div class="record-summary-item">
           <span>Mensualidad</span
@@ -60,7 +220,7 @@
           [openKey]="composeEmailKey()"
           [seedOverride]="emailSeed()"
           module="customers"
-          [record]="$any(c)"
+          [record]="templateRecord(c)"
         />
       } @else if (activeTab() === 'Archivos') {
         <app-record-attachments-section [recordId]="c.id" />
@@ -120,6 +280,7 @@
           @case ('Resumen') {
             <app-record-detail-layout>
               <div record-main>
+                <app-custom-fields-card moduleKey="customers" [recordId]="c.id" />
                 <app-record-information-card title="Información del cliente">
                   <div class="info-grid">
                     <app-record-field
@@ -276,11 +437,11 @@
                         @if (note.attachments?.length) {
                           <div class="overview-pinned-note__files">
                             @for (file of note.attachments; track file.id) {
-                              <a [href]="file.url" target="_blank" rel="noopener noreferrer"
-                                ><span>{{ file.mimeType.startsWith('image/') ? '▧' : '▤' }}</span
-                                ><b>{{ file.fileName }}</b
-                                ><small>{{ formatAttachmentSize(file.size) }}</small></a
-                              >
+                              <app-file-item
+                                [file]="file"
+                                [deletable]="true"
+                                (deleted)="removeNoteAttachment(c, note.id, file.id)"
+                              />
                             }
                           </div>
                         }
@@ -642,13 +803,11 @@
                     @if (note.attachments?.length) {
                       <div class="note-attachments">
                         @for (file of note.attachments; track file.id) {
-                          <a [href]="file.url" target="_blank" rel="noopener noreferrer"
-                            ><span>{{ file.mimeType.startsWith('image/') ? '▧' : '▤' }}</span
-                            ><span
-                              ><b>{{ file.fileName }}</b
-                              ><small>{{ formatAttachmentSize(file.size) }}</small></span
-                            ></a
-                          >
+                          <app-file-item
+                            [file]="file"
+                            [deletable]="true"
+                            (deleted)="removeNoteAttachment(c, note.id, file.id)"
+                          />
                         }
                       </div>
                     }

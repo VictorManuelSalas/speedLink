@@ -14,6 +14,15 @@ import { RouterLink } from '@angular/router';
 import { ImportValidationModal, ImportValidationResult } from './import-validation-modal';
 import { InlineEditableDateField } from './inline-editable-date-field';
 import { LanguageService } from '../core/i18n/language.service';
+import { SessionContext } from '../core/auth/session-context';
+import { AccessAction, AccessModuleKey } from '../core/auth/access.model';
+
+/** Permiso que exige cada acción de la lista; las de consulta sólo piden "ver". */
+function actionPermission(id: string): AccessAction {
+  if (id === 'delete' || id === 'export') return id;
+  if (id === 'view' || id === 'message') return 'read';
+  return 'update';
+}
 
 export type RecordListValue = string | number | boolean | null | undefined;
 export type RecordListRow = Readonly<Record<string, RecordListValue>>;
@@ -71,6 +80,9 @@ interface ActiveFilter {
 })
 export class RecordList {
   readonly i18n = inject(LanguageService);
+  private readonly session = inject(SessionContext);
+  /** Módulo de permisos: oculta las acciones que el rol del usuario no permite. */
+  readonly accessModule = input<AccessModuleKey | null>(null);
   readonly title = input.required<string>();
   readonly description = input('');
   readonly newLabel = input('Nuevo registro');
@@ -90,6 +102,16 @@ export class RecordList {
     { id: 'delete', label: 'Eliminar', icon: '⊘', danger: true },
   ]);
   readonly initialQuery = input('');
+  can(action: AccessAction): boolean {
+    const module = this.accessModule();
+    return !module || this.session.hasPermission(`${module}.${action}`);
+  }
+  readonly visibleRowActions = computed(() =>
+    this.rowActions().filter((action) => this.can(actionPermission(action.id))),
+  );
+  readonly visibleBulkActions = computed(() =>
+    this.bulkActions().filter((action) => this.can(actionPermission(action.id))),
+  );
   readonly newRequested = output<void>();
   readonly rowAction = output<{ actionId: string; record: RecordListRow }>();
   readonly bulkAction = output<{
@@ -114,6 +136,10 @@ export class RecordList {
   readonly filterPanel = signal(false);
   readonly filters = signal<ReadonlyArray<ActiveFilter>>([]);
   readonly selected = signal<ReadonlySet<string>>(new Set());
+  /** Registros a eliminar, esperando confirmación. */
+  readonly pendingDelete = signal<{ rows: ReadonlyArray<RecordListRow>; bulk: boolean } | null>(
+    null,
+  );
   readonly menuId = signal<string | null>(null);
   readonly bulkEditor = signal(false);
   readonly bulkField = signal('');
@@ -343,8 +369,23 @@ export class RecordList {
       this.bulkValue.set('');
       this.bulkEditor.set(true);
       return;
+    } else if (id === 'delete') {
+      // Borrar varios de golpe no se deshace: se confirma antes de emitir.
+      this.pendingDelete.set({ rows, bulk: true });
+      return;
     } else this.bulkAction.emit({ actionId: id, records: rows });
     if (id !== 'edit') this.clearSelection();
+  }
+  confirmDelete() {
+    const pending = this.pendingDelete();
+    if (!pending) return;
+    if (pending.bulk) {
+      this.bulkAction.emit({ actionId: 'delete', records: pending.rows });
+      this.clearSelection();
+    } else {
+      this.rowAction.emit({ actionId: 'delete', record: pending.rows[0] });
+    }
+    this.pendingDelete.set(null);
   }
   applyBulkEdit() {
     const field = this.bulkField();
@@ -359,8 +400,12 @@ export class RecordList {
     this.menuId.set(this.menuId() === id ? null : id);
   }
   runRowAction(id: string, record: RecordListRow) {
-    this.rowAction.emit({ actionId: id, record });
     this.menuId.set(null);
+    if (id === 'delete') {
+      this.pendingDelete.set({ rows: [record], bulk: false });
+      return;
+    }
+    this.rowAction.emit({ actionId: id, record });
   }
   @HostListener('document:click') closeMenu() {
     this.menuId.set(null);

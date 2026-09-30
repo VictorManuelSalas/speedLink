@@ -1,5 +1,13 @@
 import { Routes } from '@angular/router';
-import { authenticatedGuard, guestGuard, permissionGuard } from './core/auth/access.guards';
+import { inject } from '@angular/core';
+import {
+  authenticatedGuard,
+  guestGuard,
+  permissionGuard,
+  userProfileGuard,
+  customModuleGuard,
+} from './core/auth/access.guards';
+import { SessionContext } from './core/auth/session-context';
 
 export const routes: Routes = [
   {
@@ -35,7 +43,8 @@ export const routes: Routes = [
     canActivate: [authenticatedGuard],
     loadComponent: () => import('./core/layout/app-shell').then((m) => m.AppShell),
     children: [
-      { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+      // No todos los roles ven el dashboard: se entra a la primera pantalla permitida.
+      { path: '', pathMatch: 'full', redirectTo: () => inject(SessionContext).homeRoute() },
       {
         path: 'dashboard',
         canActivate: [permissionGuard('dashboard.read')],
@@ -111,6 +120,24 @@ export const routes: Routes = [
         },
       ]),
       {
+        path: 'm/:moduleKey',
+        canActivate: [customModuleGuard],
+        title: 'Módulo | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/operations/operational-module-page/operational-module-page').then(
+            (m) => m.OperationalModulePage,
+          ),
+      },
+      {
+        path: 'm/:moduleKey/:id',
+        canActivate: [customModuleGuard],
+        title: 'Detalle | SpeedLink CRM',
+        loadComponent: () =>
+          import(
+            './features/operations/operational-record-detail-page/operational-record-detail-page'
+          ).then((m) => m.OperationalRecordDetailPage),
+      },
+      {
         path: 'calendar',
         canActivate: [permissionGuard('calendar.read')],
         title: 'Calendario | SpeedLink CRM',
@@ -118,13 +145,8 @@ export const routes: Routes = [
           import('./features/calendar/calendar-page').then((m) => m.CalendarPage),
       },
       {
-        path: 'users/:id',
-        title: 'Perfil de usuario | SpeedLink CRM',
-        loadComponent: () =>
-          import('./features/users/user-profile-page').then((m) => m.UserProfilePage),
-      },
-      {
         path: 'settings',
+        canActivate: [permissionGuard('settings.read')],
         title: 'Centro de configuración | SpeedLink CRM',
         loadComponent: () =>
           import('./features/settings/settings-overview-page/settings-overview-page').then(
@@ -132,7 +154,88 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'settings/organization',
+        canActivate: [permissionGuard('settings.read')],
+        title: 'Organización | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/settings/settings-organization-page/settings-organization-page').then(
+            (m) => m.SettingsOrganizationPage,
+          ),
+      },
+      {
+        path: 'settings/taxes',
+        canActivate: [permissionGuard('settings.read')],
+        title: 'Impuestos | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/settings/settings-taxes-page/settings-taxes-page').then(
+            (m) => m.SettingsTaxesPage,
+          ),
+      },
+      {
+        path: 'settings/smtp',
+        canActivate: [permissionGuard('settings.read')],
+        title: 'Correo SMTP | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/settings/settings-smtp-page/settings-smtp-page').then(
+            (m) => m.SettingsSmtpPage,
+          ),
+      },
+      {
+        path: 'settings/sms',
+        canActivate: [permissionGuard('settings.read')],
+        title: 'Mensajería SMS | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/settings/settings-sms-page/settings-sms-page').then(
+            (m) => m.SettingsSmsPage,
+          ),
+      },
+      {
+        path: 'settings/modules',
+        canActivate: [permissionGuard('settings.read')],
+        title: 'Módulos | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/settings/settings-modules-page/settings-modules-page').then(
+            (m) => m.SettingsModulesPage,
+          ),
+      },
+      {
+        path: 'settings/modules/:key',
+        canActivate: [permissionGuard('settings.read')],
+        title: 'Campos del módulo | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/settings/settings-modules-page/settings-module-detail-page').then(
+            (m) => m.SettingsModuleDetailPage,
+          ),
+      },
+      {
+        path: 'settings/users',
+        canActivate: [permissionGuard('users.read')],
+        title: 'Usuarios | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/settings/settings-users-page/settings-users-page').then(
+            (m) => m.SettingsUsersPage,
+          ),
+      },
+      {
+        // El perfil sólo existe dentro de Ajustes; ya no hay ruta /users/:id.
+        path: 'settings/users/:id',
+        canActivate: [userProfileGuard],
+        title: 'Perfil de usuario | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/users/user-profile-page').then((m) => m.UserProfilePage),
+      },
+      {
+        path: 'settings/roles',
+        canActivate: [permissionGuard('roles.read')],
+        title: 'Roles y permisos | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/settings/settings-roles-page/settings-roles-page').then(
+            (m) => m.SettingsRolesPage,
+          ),
+      },
+      {
         path: 'settings/portal',
+        canActivate: [permissionGuard('settings.read')],
         title: 'Portal de clientes | SpeedLink CRM',
         loadComponent: () =>
           import('./features/settings/settings-portal-page/settings-portal-page').then(
@@ -141,20 +244,24 @@ export const routes: Routes = [
       },
       {
         path: 'settings/templates',
+        canActivate: [permissionGuard('settings.read')],
         title: 'Plantillas | SpeedLink CRM',
         loadComponent: () =>
           import('./features/settings/settings-templates-page/settings-templates-page').then(
             (m) => m.SettingsTemplatesPage,
           ),
       },
+      {
+        path: 'settings/connections',
+        canActivate: [permissionGuard('settings.read')],
+        title: 'Conexiones | SpeedLink CRM',
+        loadComponent: () =>
+          import('./features/settings/settings-connections-page/settings-connections-page').then(
+            (m) => m.SettingsConnectionsPage,
+          ),
+      },
       ...(
         [
-          ['organization', 'organization', 'Organización'],
-          ['users', 'users', 'Usuarios'],
-          ['roles', 'roles', 'Roles y permisos'],
-          ['smtp', 'smtp', 'Servidor SMTP'],
-          ['sms', 'sms', 'Mensajería SMS'],
-          ['modules', 'modules', 'Módulos personalizados'],
           ['workflows', 'workflows', 'Flujos de trabajo'],
           ['schedules', 'schedules', 'Programaciones'],
           ['activity', 'activity', 'Registro de actividad'],
@@ -163,11 +270,10 @@ export const routes: Routes = [
           ['2fa', '2fa', 'Autenticación 2FA'],
           ['webhooks', 'webhooks', 'Webhooks'],
           ['apis', 'apis', 'Acceso API'],
-          ['connections', 'connections', 'Conexiones'],
-          ['taxes', 'taxes', 'Impuestos'],
         ] as const
       ).map(([path, section, title]) => ({
         path: `settings/${path}`,
+        canActivate: [permissionGuard('settings.read')],
         title: `${title} | SpeedLink CRM`,
         loadComponent: () =>
           import('./features/settings/settings-section-page/settings-section-page').then(

@@ -14,21 +14,40 @@
     <div class="grid">
       @for (file of files(); track file.id) {
         <article class="file">
+          <!-- Miniatura y nombre abren la vista previa. -->
           @if (file.mimeType.startsWith('image/')) {
-            <img [src]="file.url" [alt]="file.fileName" />
+            <img
+              class="file__open"
+              [src]="file.url"
+              [alt]="file.fileName"
+              role="button"
+              tabindex="0"
+              (click)="view(file)"
+              (keydown.enter)="view(file)"
+            />
           } @else {
-            <span>{{ extension(file.fileName) }}</span>
+            <span class="file__open" role="button" tabindex="0" (click)="view(file)" (keydown.enter)="view(file)">{{
+              extension(file.fileName)
+            }}</span>
           }
-          <div>
+          <div class="file__open" (click)="view(file)">
             <b>{{ file.fileName }}</b
             ><small>{{ size(file.size) }} · {{ file.createdAt | date: 'dd MMM y, HH:mm' }}</small>
           </div>
-          <button type="button" (click)="menuClick($event, file.id)">•••</button>
+          <button type="button" aria-label="Acciones" (click)="menuClick($event, file.id)">•••</button>
           @if (menuId() === file.id) {
             <div class="menu" (click)="$event.stopPropagation()">
-              <a [href]="file.url" target="_blank" rel="noopener">Ver</a
-              ><a [href]="file.url" [attr.download]="file.fileName">Descargar</a
-              ><button type="button" (click)="remove(file.id)">Eliminar</button>
+              @if (confirmId() === file.id) {
+                <span class="menu__confirm">¿Eliminar archivo?</span>
+                <button class="danger" type="button" (click)="remove(file.id)">Sí, eliminar</button>
+                <button type="button" (click)="confirmId.set(null)">Cancelar</button>
+              } @else {
+                <button type="button" (click)="view(file)">Ver</button
+                ><button type="button" (click)="download(file)">Descargar</button
+                ><button class="danger" type="button" (click)="confirmId.set(file.id)">
+                  Eliminar
+                </button>
+              }
             </div>
           }
         </article>

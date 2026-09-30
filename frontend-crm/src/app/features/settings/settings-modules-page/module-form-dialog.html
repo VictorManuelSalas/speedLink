@@ -1,0 +1,121 @@
+<button class="settings-modal-backdrop" aria-label="Cerrar" (click)="closed.emit()"></button>
+<section class="settings-modal mod-modal" role="dialog" aria-modal="true">
+  <header>
+    <div>
+      <span>Módulos</span>
+      <h2>{{ module() ? 'Editar módulo' : 'Nuevo módulo' }}</h2>
+      <p>
+        {{
+          module()
+            ? 'El nombre de API y el prefijo de ids no cambian: ya están en rutas y registros.'
+            : 'Después podrás agregarle campos. Aparecerá en el menú del CRM.'
+        }}
+      </p>
+    </div>
+    <button class="icon-button" type="button" aria-label="Cerrar" (click)="closed.emit()">×</button>
+  </header>
+  <form (submit)="submit($event)">
+    <div class="settings-form-grid">
+      <label
+        ><span>Nombre en plural <b>*</b></span
+        ><input
+          name="plural"
+          placeholder="Órdenes de trabajo"
+          [ngModel]="draft().plural"
+          (ngModelChange)="set('plural', $event)"
+      /></label>
+      <label
+        ><span>Nombre en singular <b>*</b></span
+        ><input
+          name="singular"
+          placeholder="Orden de trabajo"
+          [ngModel]="draft().singular"
+          (ngModelChange)="set('singular', $event)"
+      /></label>
+      <label class="settings-field--wide"
+        ><span>¿Cómo se dice?</span
+        ><span class="settings-select"
+          ><select name="gender" [ngModel]="draft().gender" (ngModelChange)="set('gender', $event)">
+            <option value="f">Nueva {{ (draft().singular || 'orden de trabajo').toLocaleLowerCase() }}</option>
+            <option value="m">Nuevo {{ (draft().singular || 'proveedor').toLocaleLowerCase() }}</option></select
+          ><i>⌄</i></span
+        ></label
+      >
+      <label
+        ><span>Etiqueta del campo principal <b>*</b></span
+        ><input
+          name="primaryLabel"
+          placeholder="Nombre"
+          [ngModel]="draft().primaryLabel"
+          (ngModelChange)="set('primaryLabel', $event)"
+        />
+        <small class="mod-hint">Es el título de cada registro, p. ej. «Folio» o «Nombre».</small>
+      </label>
+      <label
+        ><span>Prefijo de ids <b>*</b></span
+        ><input
+          name="idPrefix"
+          maxlength="5"
+          class="mod-upper"
+          [disabled]="!!module()"
+          [ngModel]="draft().idPrefix"
+          (ngModelChange)="set('idPrefix', $event.toUpperCase())"
+        />
+        <small class="mod-hint">Los registros quedan como {{ draft().idPrefix || 'ABC' }}-1001.</small>
+      </label>
+      <label class="settings-field--wide"
+        ><span>Descripción</span
+        ><textarea
+          rows="2"
+          name="description"
+          [ngModel]="draft().description"
+          (ngModelChange)="set('description', $event)"
+        ></textarea>
+      </label>
+      <div class="settings-field--wide mod-icons">
+        <span>Ícono del menú</span>
+        <div role="radiogroup" aria-label="Ícono">
+          @for (icon of icons; track icon.value) {
+            <button
+              type="button"
+              role="radio"
+              [attr.aria-checked]="draft().icon === icon.value"
+              [attr.aria-label]="icon.label"
+              [class.is-selected]="draft().icon === icon.value"
+              (click)="set('icon', icon.value)"
+            >
+              <img [src]="icon.value" alt="" />
+            </button>
+          }
+        </div>
+      </div>
+      <label
+        ><span>Color</span>
+        <span class="mod-color"
+          ><input
+            type="color"
+            name="accentPicker"
+            [ngModel]="draft().accent"
+            (ngModelChange)="set('accent', $event)" /><input
+            name="accent"
+            maxlength="7"
+            [ngModel]="draft().accent"
+            (ngModelChange)="set('accent', $event)"
+        /></span>
+      </label>
+      <div class="mod-apiname">
+        <span>Nombre de API</span>
+        <code>{{ module()?.key ?? apiName() }}</code>
+      </div>
+    </div>
+    @if (error()) {
+      <p class="mod-error" role="alert">{{ error() }}</p>
+    }
+    <footer>
+      <button type="button" class="button" (click)="closed.emit()">Cancelar</button
+      ><button class="button button--primary" type="submit">
+        {{ module() ? 'Guardar' : 'Crear módulo' }}
+      </button>
+    </footer>
+  </form>
+</section>

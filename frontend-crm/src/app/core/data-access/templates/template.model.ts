@@ -7,6 +7,8 @@
  */
 
 import { OperationalModuleKey } from '../../../features/operations/operational-modules.data';
+import { customModule, nativeCustomFields } from '../../modules/custom-modules.model';
+import { systemUserName } from '../system-users';
 
 export type TemplateChannel = 'email' | 'sms';
 export type TemplateFormat = 'html' | 'text';
@@ -34,7 +36,7 @@ export interface MergeField {
   readonly label: string;
   /** Clave del registro de la que se toma el valor. */
   readonly key: string;
-  readonly format?: 'money' | 'date';
+  readonly format?: 'money' | 'date' | 'boolean' | 'user';
 }
 
 export interface MergeFieldGroup {
@@ -88,6 +90,12 @@ export const MODULE_MERGE_FIELDS: Readonly<Record<string, ReadonlyArray<MergeFie
     { token: 'customer.plan', label: 'Plan contratado', key: 'plan' },
     { token: 'customer.balance', label: 'Saldo actual', key: 'currentBalance', format: 'money' },
   ],
+  equipment: [
+    { token: 'equipment.name', label: 'Equipo', key: 'name' },
+    { token: 'wifi.ssid', label: 'Nombre de la red WiFi', key: 'wifiSsid' },
+    { token: 'wifi.band', label: 'Banda WiFi', key: 'wifiBand' },
+    { token: 'wifi.password', label: 'Contraseña WiFi', key: 'wifiPassword' },
+  ],
   assignments: [
     { token: 'assignment.folio', label: 'Folio de asignación', key: 'name' },
     { token: 'assignment.client', label: 'Cliente', key: 'client' },
@@ -96,13 +104,49 @@ export const MODULE_MERGE_FIELDS: Readonly<Record<string, ReadonlyArray<MergeFie
   ],
 };
 
+/** Acceso al portal de clientes; sólo existen al enviar desde un cliente. */
+export const PORTAL_MERGE_FIELDS: ReadonlyArray<MergeField> = [
+  { token: 'portal.url', label: 'Enlace al portal', key: 'portalUrl' },
+  { token: 'customer.id', label: 'Usuario (número de cliente)', key: 'id' },
+  { token: 'portal.pin', label: 'PIN de acceso', key: 'portalPin' },
+];
+
 /** Campos disponibles para un módulo, agrupados para el selector del editor. */
 export function mergeFieldGroups(module: TemplateModule): ReadonlyArray<MergeFieldGroup> {
-  const moduleFields = module ? (MODULE_MERGE_FIELDS[module] ?? []) : [];
+  const custom = module ? customModule(module) : undefined;
+  // Un módulo personalizado sólo trae su campo principal como campo "del módulo".
+  const moduleFields = custom
+    ? [{ token: 'record.name', label: custom.primaryLabel, key: 'name' }]
+    : module
+      ? (MODULE_MERGE_FIELDS[module] ?? [])
+      : [];
+  const customFields = module ? customFieldTokens(module) : [];
   return [
     ...(moduleFields.length ? [{ title: 'Campos del módulo', fields: moduleFields }] : []),
+    ...(customFields.length ? [{ title: 'Campos personalizados', fields: customFields }] : []),
+    ...(module === 'customers' ? [{ title: 'Portal del cliente', fields: PORTAL_MERGE_FIELDS }] : []),
     { title: 'Generales', fields: GLOBAL_MERGE_FIELDS },
   ];
+}
+
+/** Campos creados en Ajustes > Módulos, como `${custom.cf_…}`. */
+function customFieldTokens(module: string): ReadonlyArray<MergeField> {
+  const fields = customModule(module)?.fields ?? nativeCustomFields(module);
+  return fields.map((field) => ({
+    token: `custom.${field.key}`,
+    label: field.label,
+    key: field.key,
+    format:
+      field.type === 'currency'
+        ? 'money'
+        : field.type === 'date'
+          ? 'date'
+          : field.type === 'checkbox'
+            ? 'boolean'
+            : field.type === 'user'
+              ? 'user'
+              : undefined,
+  }));
 }
 
 export interface RenderContext {
@@ -126,7 +170,7 @@ export function renderTemplateText(
   context: RenderContext,
 ): string {
   const fields = new Map(
-    [...(module ? (MODULE_MERGE_FIELDS[module] ?? []) : []), ...GLOBAL_MERGE_FIELDS].map(
+    mergeFieldGroups(module).flatMap((group) => group.fields).map(
       (field) => [field.token, field],
     ),
   );
@@ -160,6 +204,8 @@ function resolveField(field: MergeField, context: RenderContext): string {
   if (raw === undefined || raw === null || raw === '') return '';
   if (field.format === 'money') return context.formatMoney(raw);
   if (field.format === 'date') return context.formatDate(raw);
+  if (field.format === 'boolean') return String(raw) === 'true' ? 'Sí' : 'No';
+  if (field.format === 'user') return systemUserName(String(raw)) ?? String(raw);
   return String(raw);
 }
 

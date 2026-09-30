@@ -659,3 +659,9 @@ table.is-dense td {
     min-width: 700px;
   }
 }
+.field-help {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-secondary);
+  font-size: 10.5px;
+}

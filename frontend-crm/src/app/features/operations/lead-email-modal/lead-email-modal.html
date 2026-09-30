@@ -37,13 +37,7 @@
           <div class="preview-attachments">
             <b>{{ email.attachments.length }} adjunto(s)</b>
             @for (file of email.attachments; track file.id) {
-              <a [href]="file.url" target="_blank" rel="noopener"
-                ><span>{{ extension(file.fileName) }}</span
-                ><span
-                  ><b>{{ file.fileName }}</b
-                  ><small>{{ formatSize(file.size) }}</small></span
-                ></a
-              >
+              <app-file-item [file]="file" />
             }
           </div>
         }
@@ -69,6 +63,12 @@
           </div>
           <button type="button" aria-label="Cerrar" (click)="closed.emit()">×</button>
         </header>
+        @if (smtpBlocked(); as reason) {
+          <p class="composer-warning" role="status">
+            {{ reason }} Puedes guardarlo como borrador y enviarlo cuando esté listo.
+            <a routerLink="/settings/smtp" (click)="closed.emit()">Configurar SMTP</a>
+          </p>
+        }
         <div class="composer-fields">
           <label
             ><span>Para</span
@@ -90,7 +90,12 @@
           /></label>
           <label
             ><span>De</span
-            ><input #fromInput type="email" [value]="from()" (input)="from.set(fromInput.value)"
+            ><input
+              class="composer-from"
+              [value]="senderLabel()"
+              readonly
+              tabindex="-1"
+              title="Remitente configurado en Ajustes > SMTP"
           /></label>
           <label
             ><span>Plantilla</span

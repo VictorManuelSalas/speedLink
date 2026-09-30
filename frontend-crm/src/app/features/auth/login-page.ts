@@ -52,16 +52,20 @@ export class LoginPage {
     if (this.loading() || !this.email || this.password.length < 8) return;
     this.loading.set(true);
     this.error.set('');
-    window.setTimeout(() => {
-      const result = this.session.login(this.email, this.password, this.remember);
+    window.setTimeout(async () => {
+      const result = await this.session.login(this.email, this.password, this.remember);
       this.loading.set(false);
       if (!result.success) {
         this.error.set(result.message ?? 'No se pudo iniciar sesión. Inténtalo de nuevo.');
         return;
       }
+      // Sin returnUrl se entra a la primera pantalla que el rol permite ver:
+      // no todos los roles tienen acceso al dashboard.
       const requested = this.route.snapshot.queryParamMap.get('returnUrl');
       const returnUrl =
-        requested?.startsWith('/') && !requested.startsWith('//') ? requested : '/dashboard';
+        requested?.startsWith('/') && !requested.startsWith('//')
+          ? requested
+          : this.session.homeRoute();
       void this.router.navigateByUrl(returnUrl, { replaceUrl: true });
     }, 450);
   }

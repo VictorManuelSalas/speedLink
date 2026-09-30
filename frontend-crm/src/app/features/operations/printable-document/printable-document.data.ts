@@ -8,6 +8,7 @@
  */
 
 import { OperationalModuleKey, OperationalRecord } from '../operational-modules.data';
+import { ORGANIZATION } from '../../../core/organization/organization.model';
 
 export interface DocumentRow {
   readonly label: string;
@@ -62,13 +63,8 @@ export const DOCUMENT_ACTION_LABEL: Partial<Record<OperationalModuleKey, string>
   contracts: '⇩ Descargar contrato',
 };
 
-export const ORGANIZATION = {
-  name: 'SpeedLink Telecom',
-  code: 'SL-MX-01',
-  email: 'contacto@speedlink.mx',
-  phone: '+52 55 4100 2200',
-  address: 'Zumpango, Estado de México',
-} as const;
+/** Perfil vivo de Ajustes > Organización (antes era una constante fija). */
+export { ORGANIZATION };
 
 export interface DocumentContext {
   readonly record: OperationalRecord;
@@ -79,6 +75,8 @@ export interface DocumentContext {
   readonly payments?: ReadonlyArray<OperationalRecord>;
   /** Partidas del contrato, ya resueltas contra el catálogo de servicios. */
   readonly contractItems?: ReadonlyArray<{ name: string; quantity: number; unitPrice: number }>;
+  /** Redes WiFi del equipo entregado (sólo nombre y banda; nunca contraseñas). */
+  readonly wifiNetworks?: ReadonlyArray<{ ssid: string; band: string }>;
 }
 
 function text(value: unknown, fallback = '—'): string {
@@ -122,7 +120,13 @@ function buildInvoice(context: DocumentContext): PrintableDocument {
             ? ([{ label: 'Subtotal', value: formatMoney(record['subtotal']) }] as DocumentRow[])
             : []),
           ...(record['taxAmount'] != null
-            ? ([{ label: 'Impuestos', value: formatMoney(record['taxAmount']) }] as DocumentRow[])
+            ? ([
+                {
+                  // La factura guarda el nombre de la tasa con la que se emitió.
+                  label: record['taxName'] ? String(record['taxName']) : 'Impuestos',
+                  value: formatMoney(record['taxAmount']),
+                },
+              ] as DocumentRow[])
             : []),
           { label: 'Total', value: formatMoney(total), strong: true },
           ...(payments.length
@@ -167,6 +171,23 @@ function buildAssignment(context: DocumentContext): PrintableDocument {
           { label: 'Clave de inventario', value: text(record['equipmentId']) },
         ],
       },
+      // El WiFi es del cliente: se le entrega su red. La contraseña va por
+      // separado y el acceso de administración nunca se imprime.
+      ...(context.wifiNetworks?.length
+        ? [
+            {
+              title: 'Tu red WiFi',
+              rows: [
+                ...context.wifiNetworks.map((network) => ({
+                  label: `Red ${network.band}`,
+                  value: network.ssid,
+                  strong: true,
+                })),
+                { label: 'Contraseña', value: 'Se entrega por separado' },
+              ],
+            },
+          ]
+        : []),
       {
         title: 'Instalación',
         rows: [

@@ -1,0 +1,124 @@
+.sms-sender-type {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+
+  label {
+    padding: 12px;
+    flex-direction: row !important;
+    align-items: flex-start;
+    gap: 10px !important;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  label:has(input:checked) {
+    border-color: #93c5fd;
+    background: #eff6ff;
+  }
+  input {
+    width: 16px !important;
+    height: 16px !important;
+    margin-top: 2px;
+    accent-color: var(--color-primary);
+  }
+  span {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  b {
+    color: var(--color-text-primary);
+    font-size: 12.5px;
+  }
+  small {
+    font-weight: 500;
+  }
+}
+.sms-calculator {
+  p {
+    margin: 4px 0 10px;
+    color: var(--color-text-secondary);
+    font-size: 11.5px;
+    line-height: 1.5;
+  }
+  textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 12.5px;
+    resize: vertical;
+  }
+}
+.sms-calculator__result {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #ecfdf5;
+  color: #166534;
+
+  b {
+    display: block;
+    font-size: 13px;
+  }
+  small {
+    margin: 2px 0 0 !important;
+    color: inherit !important;
+  }
+}
+.sms-calculator__result.is-multi {
+  background: #fffbeb;
+  color: #92400e;
+}
+.sms-templates {
+  margin: 10px 0 0 !important;
+  padding: 0 !important;
+  list-style: none;
+
+  li {
+    padding: 9px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  li:last-child {
+    border: 0;
+  }
+  span {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  b {
+    color: var(--color-text-primary);
+    font-size: 12px;
+  }
+  small {
+    margin: 2px 0 0 !important;
+  }
+  em {
+    flex: 0 0 auto;
+    padding: 3px 8px;
+    border-radius: 99px;
+    background: #ecfdf5;
+    color: #166534;
+    font-size: 10.5px;
+    font-style: normal;
+    font-weight: 700;
+  }
+  em.is-multi {
+    background: #fffbeb;
+    color: #92400e;
+  }
+}
+@media (max-width: 640px) {
+  .sms-sender-type {
+    grid-template-columns: 1fr;
+  }
+}
