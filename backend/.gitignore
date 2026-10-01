@@ -1,0 +1,9 @@
+# Secretos: usa .env.example como plantilla
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store

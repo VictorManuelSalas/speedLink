@@ -5,8 +5,9 @@ import {
   provideBrowserGlobalErrorListeners,
 } from '@angular/core';
 import { provideHttpClient, withFetch } from '@angular/common/http';
-import { RouteReuseStrategy, provideRouter } from '@angular/router';
+import { RouteReuseStrategy, TitleStrategy, provideRouter } from '@angular/router';
 import { ModuleRouteReuseStrategy } from './core/layout/module-route-reuse';
+import { TranslatedTitleStrategy } from './core/i18n/translated-title.strategy';
 
 import { routes } from './app.routes';
 import { provideMockDataAccess } from './core/data-access/mock-crm-data';
@@ -22,6 +23,7 @@ export const appConfig: ApplicationConfig = {
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
     { provide: RouteReuseStrategy, useClass: ModuleRouteReuseStrategy },
+    { provide: TitleStrategy, useExisting: TranslatedTitleStrategy },
     provideHttpClient(withFetch()),
     ...provideMockDataAccess(),
     // Data Access Layer services

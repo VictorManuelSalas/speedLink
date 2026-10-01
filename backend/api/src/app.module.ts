@@ -1,34 +1,22 @@
 import { Module } from '@nestjs/common';
-// import { CacheModule } from '@nestjs/cache-manager';
-// import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 
-//Guards 
-
 import { PrismaModule } from './prisma/prisma.module';
+import { MongoModule } from './mongo/mongo.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { UsersModule } from './users/users.module';
 
-//Controllers + Modules 
-
-//Inventory
-
-
 @Module({
-    imports: [ 
-        ConfigModule.forRoot({
-            isGlobal: true,
-            envFilePath: `.env.${process.env.NODE_ENV}`,
-        }), 
-        PrismaModule,
-        TicketsModule,
-        UsersModule
-    ],
-    controllers: [
-
-    ],
-    providers: [
-
-    ],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // .env.development / .env.production si existen; si no, .env.
+      envFilePath: [`.env.${process.env.NODE_ENV}`, '.env'],
+    }),
+    PrismaModule,
+    MongoModule,
+    TicketsModule,
+    UsersModule,
+  ],
 })
-export class AppModule { }
+export class AppModule {}

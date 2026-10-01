@@ -36,7 +36,9 @@ export class DashboardPage {
     const salute = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
     return first ? `${salute}, ${first}` : salute;
   });
-  readonly today = new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+  readonly today = computed(() =>
+    new Intl.DateTimeFormat(this.i18n.locale(), { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()),
+  );
 
   readonly billing = computed(() => this.metrics.billing(12));
   readonly maxBilled = computed(() => Math.max(1, ...this.billing().map((point) => point.billed)));
@@ -128,6 +130,6 @@ export class DashboardPage {
     const hours = Math.round(minutes / 60);
     if (hours < 24) return `Hace ${hours} h`;
     const days = Math.round(hours / 24);
-    return days < 30 ? `Hace ${days} d` : new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' }).format(new Date(date));
+    return days < 30 ? `Hace ${days} d` : new Intl.DateTimeFormat(this.i18n.locale(), { day: 'numeric', month: 'short' }).format(new Date(date));
   }
 }

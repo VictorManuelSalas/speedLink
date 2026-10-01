@@ -2,7 +2,7 @@
   <div>
     <div class="breadcrumbs"><span>SpeedLink CRM</span><b>›</b><span>Dashboard</span></div>
     <h1>{{ greeting() }}</h1>
-    <p>Este es el resumen de tu operación hoy, {{ today }}.</p>
+    <p>Este es el resumen de tu operación hoy, {{ today() }}.</p>
   </div>
   <div class="page-header__actions">
     <button class="button" type="button" [disabled]="loading()" (click)="export()">⇩ Exportar</button

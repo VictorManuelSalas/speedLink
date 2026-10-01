@@ -1,3 +1,22 @@
+// ============================================================
+// SpeedLink CRM · PostgreSQL (Prisma)
+//
+// Aquí vive lo transaccional: lo que tiene reglas, relaciones y dinero.
+// Lo de alto volumen y solo-agregar (actividad, auditoría, mensajes enviados,
+// entregas de webhooks, comandos al router, tráfico, trabajos del worker)
+// vive en MongoDB: ver src/mongo/schemas.
+//
+// Convenciones
+// - Toda tabla de negocio lleva organizationId (multi-empresa) y sus índices
+//   empiezan por él.
+// - id = cuid interno. Lo que ve el usuario (SL-1100, INV-000123, TK-…) es
+//   `code`/`folio`, único por organización y generado con `Sequence`.
+// - Borrado lógico con deletedAt en los registros de negocio.
+// - Ninguna contraseña ni llave va en claro: van en `VaultSecret` (cifradas)
+//   y en la tabla dueña solo queda `secretTail` (últimos 4) para mostrarla.
+// - Dinero: Decimal(12, 2). Velocidades: Decimal(8, 2) en Mbps.
+// ============================================================
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,22 +30,33 @@ datasource db {
 // ENUMS
 // ============================================================
 
-enum UserStatus {
-  ACTIVE
-  INACTIVE
-  SUSPENDED
-}
-
 enum Language {
   ES
   EN
 }
 
-enum ClientStatus {
+enum UserStatus {
+  INVITED
   ACTIVE
   SUSPENDED
+}
+
+enum UserTokenType {
+  INVITE
+  PASSWORD_RESET
+}
+
+enum ClientType {
+  HOME
+  BUSINESS
+}
+
+enum ClientStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  INACTIVE
   CANCELLED
-  PROSPECT
 }
 
 enum LeadStatus {
@@ -37,12 +67,46 @@ enum LeadStatus {
   CONVERTED
 }
 
+enum LeadSource {
+  REFERRAL
+  SOCIAL_MEDIA
+  WEBSITE
+  PHONE_CALL
+  OTHER
+}
+
+enum ServiceType {
+  INTERNET
+  STREAMING
+  ADDON
+}
+
+enum ServiceStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
 enum EquipmentStatus {
   AVAILABLE
   ASSIGNED
   DAMAGED
-  RETIRED
   IN_REPAIR
+  RETIRED
+  LOST
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  RETURNED
+  INACTIVE
+}
+
+enum ContractStatus {
+  PENDING_SIGNATURE
+  ACTIVE
+  EXPIRED
+  CANCELLED
 }
 
 enum InvoiceStatus {
@@ -62,6 +126,13 @@ enum PaymentMethod {
   OTHER
 }
 
+enum PaymentSource {
+  STAFF
+  PORTAL
+  GATEWAY_WEBHOOK
+  IMPORT
+}
+
 enum ExpenseCategory {
   ELECTRICITY
   INTERNET
@@ -73,8 +144,20 @@ enum ExpenseCategory {
   OTHER
 }
 
+enum TaxFactor {
+  RATE
+  EXEMPT
+}
+
+enum CalendarEventType {
+  INSTALLATION
+  FOLLOW_UP
+  PAYMENT
+  MAINTENANCE
+}
+
 enum EventStatus {
-  PENDING
+  SCHEDULED
   COMPLETED
   CANCELLED
 }
@@ -94,63 +177,191 @@ enum TicketPriority {
   CRITICAL
 }
 
-enum ContractStatus {
-  ACTIVE
-  EXPIRED
-  CANCELLED
-  PENDING_SIGNATURE
+enum TicketCategory {
+  CONNECTIVITY
+  BILLING
+  EQUIPMENT
+  INSTALLATION
+  OTHER
 }
 
-enum ScheduleType {
-  FIXED
-  RECURRING
-  ONE_TIME
+enum TicketChannel {
+  PHONE
+  WHATSAPP
+  EMAIL
+  PORTAL
+}
+
+enum EmailStatus {
+  DRAFT
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum TemplateChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum TemplateFormat {
+  HTML
+  TEXT
+}
+
+enum TemplateStatus {
+  ACTIVE
+  DRAFT
+}
+
+enum CustomFieldType {
+  TEXT
+  TEXTAREA
+  NUMBER
+  CURRENCY
+  DATE
+  PICKLIST
+  CHECKBOX
+  EMAIL
+  PHONE
+  URL
+  USER
+  LOOKUP
+}
+
+enum Gender {
+  M
+  F
+}
+
+enum SmtpSecurity {
+  STARTTLS
+  SSL
+  NONE
+}
+
+enum SmsProvider {
+  TWILIO
+  MESSAGEBIRD
+  VONAGE
+  OTHER
+}
+
+enum SmsSenderType {
+  NUMBER
+  ALPHANUMERIC
+}
+
+enum ConnectionMode {
+  SANDBOX
+  PRODUCTION
+}
+
+enum PaymentProvider {
+  CONEKTA
+  MERCADOPAGO
+  OPENPAY
+  STRIPE
+}
+
+enum OnlinePaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  REFUNDED
+}
+
+enum CfdiProvider {
+  FACTURAMA
+  FACTURAPI
+  SW
+}
+
+enum CfdiStatus {
+  PENDING
+  STAMPED
+  FAILED
+  CANCELLED
+}
+
+enum HttpAuthType {
+  NONE
+  API_KEY
+  BEARER
+  BASIC
+}
+
+// Los valores en la base son los mismos que usa el frontend ("invoice.paid").
+enum WebhookEvent {
+  CUSTOMER_CREATED  @map("customer.created")
+  CONTRACT_CREATED  @map("contract.created")
+  INVOICE_CREATED   @map("invoice.created")
+  INVOICE_PAID      @map("invoice.paid")
+  PAYMENT_CREATED   @map("payment.created")
+  TICKET_CREATED    @map("ticket.created")
+  TICKET_RESOLVED   @map("ticket.resolved")
+  NETWORK_BLOCKED   @map("network.blocked")
+  NETWORK_UNBLOCKED @map("network.unblocked")
+  WHATSAPP_SENT     @map("whatsapp.sent")
+  RECORD_DELETED    @map("record.deleted")
+}
+
+enum RouterApi {
+  REST
+  API_SSL
+}
+
+enum BlockReason {
+  NON_PAYMENT
+  CUSTOMER_REQUEST
+  MAINTENANCE
+  OTHER
+}
+
+enum NetworkSyncStatus {
+  PENDING
+  SYNCED
+  MANUAL
+  FAILED
+}
+
+enum WifiBand {
+  BAND_2_4 @map("2.4")
+  BAND_5   @map("5")
+  DUAL     @map("dual")
+  GUEST    @map("guest")
+}
+
+enum WifiSecurity {
+  WPA2
+  WPA3
+  WPA2_WPA3
+  OPEN
+}
+
+enum PortalAccessStatus {
+  ACTIVE
+  DISABLED
+}
+
+// Dueño de un secreto en la bóveda.
+enum SecretKind {
+  DEVICE_ADMIN
+  WIFI
+  ROUTER
+  SMTP
+  SMS
+  PAYMENTS
+  CFDI
+  CUSTOM_CONNECTION
+  WEBHOOK_SIGNING
 }
 
 enum ScheduleStatus {
   ACTIVE
   PAUSED
-  COMPLETED
-  FAILED
-}
-
-enum WebhookEvent {
-  CLIENT_CREATED
-  CLIENT_UPDATED
-  CLIENT_SUSPENDED
-  INVOICE_GENERATED
-  PAYMENT_RECEIVED
-  TICKET_OPENED
-  TICKET_RESOLVED
-  LEAD_CONVERTED
-}
-
-enum RoleType {
-  SUPERADMIN
-  ADMIN
-  MANAGER
-  EMPLOYER
-  CUSTOM
-}
-
-enum ModuleType {
-  NATIVE
-  CUSTOM
-}
-
-enum FieldType {
-  TEXT
-  NUMBER
-  DATE
-  DATETIME
-  BOOLEAN
-  SELECT
-  MULTISELECT
-  RELATION
-  EMAIL
-  PHONE
-  URL
-  TEXTAREA
 }
 
 // ============================================================
@@ -158,298 +369,506 @@ enum FieldType {
 // ============================================================
 
 model Organization {
-  id          String   @id @default(cuid())
-  name        String
-  orgCode     String   @unique // identificador amigable tipo "isp-trc"
-  email       String
-  phone       String?
-  cellphone   String?
-  address     String?
-  description String?
-  timeZone    String   @default("America/Mexico_City")
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  code             String   @unique // "speedlink-mx-01"
+  tradeName        String
+  legalName        String?
+  rfc              String?
+  taxRegime        String? // clave SAT: 601, 612, 626…
+  fiscalPostalCode String?
+  email            String?
+  phone            String?
+  website          String?
+  street           String?
+  city             String?
+  state            String?
+  postalCode       String?
+  logoUrl          String?
+  timeZone         String   @default("America/Mexico_City")
+  currency         String   @default("MXN")
+  invoiceSeries    String   @default("INV")
+  paymentTermsDays Int      @default(10) // días de la emisión al vencimiento
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  updatedById      String?
 
-  // Relaciones
-  users           User[]
-  roles           Role[]
-  clients         Client[]
-  leads           Lead[]
-  services        Service[]
-  equipments      Equipment[]
-  assignments     Assignment[]
-  invoices        Invoice[]
-  payments        Payment[]
-  expenses        Expense[]
-  calendarEvents  CalendarEvent[]
-  tickets         Ticket[]
-  attachments     Attachment[]
-  contracts       Contract[]
-  notes           Note[]
-  emailLogs       EmailLog[]
-  smtpConfig      SmtpConfig?
-  smsConfig       SmsConfig?
-  clientPortals   ClientPortal[]
-  emailTemplates  EmailTemplate[]
-  smsTemplates    SmsTemplate[]
-  customModules   CustomModule[]
-  workflows       Workflow[]
-  schedules       Schedule[]
-  webhooks        Webhook[]
-  ipRestrictions  IpRestriction[]
-  activityLogs    ActivityLog[]
-  auditTrails     AuditTrail[]
-  taxConfigs      TaxConfig[]
-  thirdPartyConns ThirdPartyConnection[]
+  sequences            Sequence[]
+  taxRates             TaxRate[]
+  roles                Role[]
+  users                User[]
+  clients              Client[]
+  leads                Lead[]
+  services             Service[]
+  equipments           Equipment[]
+  inventoryMinimums    InventoryMinimum[]
+  deviceModelDefaults  DeviceModelDefault[]
+  assignments          Assignment[]
+  contracts            Contract[]
+  invoices             Invoice[]
+  payments             Payment[]
+  onlinePayments       OnlinePayment[]
+  expenses             Expense[]
+  calendarEvents       CalendarEvent[]
+  tickets              Ticket[]
+  notes                Note[]
+  attachments          Attachment[]
+  emailMessages        EmailMessage[]
+  templates            Template[]
+  customModules        CustomModule[]
+  customFields         CustomField[]
+  nativeModuleSettings NativeModuleSetting[]
+  customRecords        CustomRecord[]
+  smtpConfig           SmtpConfig?
+  smsConfig            SmsConfig?
+  connectionSettings   ConnectionSettings?
+  paymentGateway       PaymentGatewayConfig?
+  cfdiConfig           CfdiConfig?
+  customConnections    CustomConnection[]
+  webhooks             Webhook[]
+  routers              Router[]
+  speedProfiles        SpeedProfile[]
+  networkSubscribers   NetworkSubscriber[]
+  cutoffRules          CutoffRules?
+  deviceAccesses       DeviceAccess[]
+  portalConfig         PortalConfig?
+  portalAccesses       PortalAccess[]
+  vaultSecrets         VaultSecret[]
+  ipRestrictions       IpRestriction[]
+  automations          Automation[]
+  schedules            Schedule[]
 
   @@map("organizations")
 }
 
+/// Contadores por organización para folios legibles: SL, INV, TK, ASG, LD…
+/// Se incrementa con UPDATE … SET next = next + 1 RETURNING (atómico).
+model Sequence {
+  id             String @id @default(cuid())
+  organizationId String
+  key            String // "clients", "invoices", "tickets", "cm_ordenes"…
+  prefix         String // "SL", "INV", "TK"…
+  next           Int    @default(1)
+  padding        Int    @default(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+  @@map("sequences")
+}
+
+model TaxRate {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String // "IVA 16%"
+  factor         TaxFactor @default(RATE)
+  rate           Decimal   @db.Decimal(7, 4) // porcentaje: 16.0000
+  description    String?
+  isActive       Boolean   @default(true)
+  isDefault      Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoices     Invoice[]
+  services     Service[]
+
+  @@unique([organizationId, name])
+  @@map("tax_rates")
+}
+
 // ============================================================
-// USUARIOS, ROLES Y PERMISOS
+// USUARIOS, ROLES Y SESIONES
 // ============================================================
 
 model Role {
   id             String   @id @default(cuid())
   organizationId String
   name           String
-  type           RoleType @default(CUSTOM)
   description    String?
-  isActive       Boolean  @default(true)
+  isSystem       Boolean  @default(false) // Administrador: todos los permisos, no editable
+  /// Permisos "modulo.accion", igual que el frontend: "invoices.delete",
+  /// "equipment.credentials", "network.block", "cm_ordenes.read"…
+  permissions    String[] -> ///Duda: Los permisos no debe ser variable??
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   users        User[]
-  permissions  RolePermission[]
 
   @@unique([organizationId, name])
   @@map("roles")
 }
 
-model RolePermission {
-  id        String  @id @default(cuid())
-  roleId    String
-  module    String // nombre del módulo (clients, invoices, etc.)
-  canRead   Boolean @default(false)
-  canCreate Boolean @default(false)
-  canUpdate Boolean @default(false)
-  canDelete Boolean @default(false)
-  canExport Boolean @default(false)
-
-  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
-
-  @@unique([roleId, module])
-  @@map("role_permissions")
-}
-
 model User {
-  id                String     @id @default(cuid())
-  organizationId    String
-  roleId            String
-  name              String
-  email             String
-  phone             String?
-  password          String // hashed
-  status            UserStatus @default(ACTIVE)
-  twoFactorEnabled  Boolean    @default(false)
-  twoFactorSecret   String?
-  lastLoginAt       DateTime?
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
-  deletedAt         DateTime? // soft delete
-  preferredLanguage Language   @default(ES)
+  id                 String     @id @default(cuid())
+  organizationId     String
+  roleId             String
+  name               String
+  email              String // siempre en minúsculas
+  phone              String?
+  passwordHash       String? // argon2id; null mientras la invitación no se acepta
+  mustChangePassword Boolean    @default(false)
+  status             UserStatus @default(INVITED)
+  preferredLanguage  Language   @default(ES)
+  twoFactorEnabled   Boolean    @default(false)
+  twoFactorSecret    String? // cifrado
+  invitedAt          DateTime?
+  lastLoginAt        DateTime?
+  suspendedAt        DateTime?
+  failedLoginCount   Int        @default(0)
+  lockedUntil        DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  deletedAt          DateTime?
 
   organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   role            Role            @relation(fields: [roleId], references: [id])
-  notesCreated    Note[]
-  emailsSent      EmailLog[]
-  activityLogs    ActivityLog[]
-  auditTrails     AuditTrail[]
-  calendarEvents  CalendarEvent[] @relation("EventCreatedBy")
+  sessions        UserSession[]
+  tokens          UserToken[]
+  ownedLeads      Lead[]          @relation("LeadOwner")
+  technicianOf    Client[]        @relation("ClientTechnician")
+  eventsCreated   CalendarEvent[] @relation("EventCreatedBy")
   eventsAssigned  CalendarEvent[] @relation("EventAssignedTo")
   ticketsCreated  Ticket[]        @relation("TicketCreatedBy")
   ticketsAssigned Ticket[]        @relation("TicketAssignedTo")
   ticketComments  TicketComment[] @relation("TicketCommentAuthor")
+  notes           Note[]
   attachments     Attachment[]    @relation("AttachmentUploadedBy")
+  emailMessages   EmailMessage[]
 
   @@unique([organizationId, email])
+  @@index([organizationId, status])
   @@map("users")
 }
 
+/// Refresh tokens (uno por dispositivo). Se guarda el hash, nunca el token.
+model UserSession {
+  id               String    @id @default(cuid())
+  userId           String
+  refreshTokenHash String    @unique
+  userAgent        String?
+  ip               String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  lastUsedAt       DateTime?
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_sessions")
+}
+
+/// Invitación y restablecimiento de contraseña por enlace de un solo uso
+/// (reemplaza la contraseña temporal que hoy genera el frontend).
+model UserToken {
+  id        String        @id @default(cuid())
+  userId    String
+  type      UserTokenType
+  tokenHash String        @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("user_tokens")
+}
+
 // ============================================================
-// MÓDULO: CLIENTS
+// CLIENTES Y LEADS
 // ============================================================
 
 model Client {
   id             String       @id @default(cuid())
   organizationId String
+  code           String // "SL-1100"
+  type           ClientType   @default(HOME)
   name           String
   email          String?
   phone          String?
   cellphone      String?
   address        String?
-  latitude       Float? // coordenadas GPS para instalación
-  longitude      Float?
-  status         ClientStatus @default(ACTIVE)
-  billingDay     Int          @default(1) // día del mes para facturación (1-28)
+  community      String? // comunidad / colonia
+  latitude       Decimal?     @db.Decimal(9, 6)
+  longitude      Decimal?     @db.Decimal(9, 6)
+  status         ClientStatus @default(PENDING)
+  billingDay     Int          @default(1) // 1–28
   installDate    DateTime?
-  notes          String? // notas rápidas internas
-  customFields   Json? // campos de módulos customizados
+  internalNotes  String?
+  technicianId   String?
+  customFields   Json? // valores de campos personalizados (cf_*)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
-  deletedAt      DateTime? // soft delete
+  createdById    String?
+  updatedById    String?
+  deletedAt      DateTime?
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  technician     User?              @relation("ClientTechnician", fields: [technicianId], references: [id])
+  convertedFrom  Lead?              @relation("LeadConversion")
   assignments    Assignment[]
+  contracts      Contract[]
   invoices       Invoice[]
   payments       Payment[]
+  onlinePayments OnlinePayment[]
   tickets        Ticket[]
-  contracts      Contract[]
-  calendarEvents CalendarEvent[]
-  relNotes       Note[]          @relation("ClientNotes")
-  emailLogs      EmailLog[]
+  events         CalendarEvent[]
+  subscriber     NetworkSubscriber?
+  portalAccess   PortalAccess?
 
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@index([organizationId, name])
   @@map("clients")
 }
-
-// ============================================================
-// MÓDULO: LEADS
-// ============================================================
 
 model Lead {
   id                  String     @id @default(cuid())
   organizationId      String
+  code                String // "LD-000123"
+  type                ClientType @default(HOME)
   name                String
   email               String?
   phone               String?
   cellphone           String?
   address             String?
-  latitude            Float?
-  longitude           Float?
-  type                String? // residencial, comercial, etc.
+  latitude            Decimal?   @db.Decimal(9, 6)
+  longitude           Decimal?   @db.Decimal(9, 6)
+  source              LeadSource @default(OTHER)
   status              LeadStatus @default(NEW)
-  source              String? // referido, redes sociales, llamada, etc.
-  notes               String?
+  ownerId             String?
+  description         String?
+  interestedPlanId    String? // plan de internet que le interesa
   convertedAt         DateTime?
-  convertedToClientId String? // FK al client resultante tras conversión
+  convertedToClientId String?    @unique
   customFields        Json?
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
+  createdById         String?
+  updatedById         String?
   deletedAt           DateTime?
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  relNotes       Note[]          @relation("LeadNotes")
-  emailLogs      EmailLog[]
-  calendarEvents CalendarEvent[]
+  organization      Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner             User?           @relation("LeadOwner", fields: [ownerId], references: [id])
+  interestedPlan    Service?        @relation("LeadPlan", fields: [interestedPlanId], references: [id])
+  /// Servicios de streaming / complementos que le interesan.
+  interestedAddons  Service[]       @relation("LeadAddons")
+  convertedToClient Client?         @relation("LeadConversion", fields: [convertedToClientId], references: [id])
+  events            CalendarEvent[]
 
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@index([organizationId, ownerId])
   @@map("leads")
 }
 
 // ============================================================
-// MÓDULO: SERVICES
+// SERVICIOS (catálogo de planes)
 // ============================================================
 
 model Service {
-  id             String    @id @default(cuid())
+  id             String        @id @default(cuid())
   organizationId String
-  name           String // "Plan 10 Mbps", "Netflix", "Spotify"
+  code           String // "SRV-000012"
+  name           String
   description    String?
-  price          Decimal   @db.Decimal(10, 2)
-  type           String? // "internet", "streaming", "addon"
-  isActive       Boolean   @default(true)
+  type           ServiceType   @default(INTERNET)
+  status         ServiceStatus @default(ACTIVE)
+  price          Decimal       @db.Decimal(12, 2)
+  taxRateId      String?
+  /// Solo para INTERNET: definen el perfil de velocidad del MikroTik.
+  downloadMbps   Decimal?      @db.Decimal(8, 2)
+  uploadMbps     Decimal?      @db.Decimal(8, 2)
   customFields   Json?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  createdById    String?
+  updatedById    String?
   deletedAt      DateTime?
 
   organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  taxRate       TaxRate?       @relation(fields: [taxRateId], references: [id])
   contractItems ContractItem[]
   invoiceItems  InvoiceItem[]
-  relNotes      Note[]         @relation("ServiceNotes")
+  speedProfile  SpeedProfile?
+  leadsAsPlan   Lead[]         @relation("LeadPlan")
+  leadsAsAddon  Lead[]         @relation("LeadAddons")
 
+  @@unique([organizationId, code])
+  @@index([organizationId, type, status])
   @@map("services")
 }
 
 // ============================================================
-// MÓDULO: EQUIPMENTS
+// EQUIPOS, INVENTARIO Y ACCESO
 // ============================================================
 
 model Equipment {
   id             String          @id @default(cuid())
   organizationId String
-  name           String // "Antena Ubiquiti M5", "Router MikroTik"
+  code           String // "EQ-000045"
+  name           String
   brand          String?
   model          String?
+  /// brand + model en minúsculas: agrupa existencias y defaults por modelo.
+  modelKey       String?
   serialNumber   String?
-  macAddress     String?
+  macAddress     String? // AA:BB:CC:DD:EE:FF en mayúsculas
   status         EquipmentStatus @default(AVAILABLE)
+  purchaseCost   Decimal?        @db.Decimal(12, 2)
   purchaseDate   DateTime?
-  purchaseCost   Decimal?        @db.Decimal(10, 2)
-  notes          String?
+  forSale        Boolean         @default(false)
+  description    String?
   customFields   Json?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+  createdById    String?
+  updatedById    String?
   deletedAt      DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   assignments  Assignment[]
-  relNotes     Note[]       @relation("EquipmentNotes")
+  access       DeviceAccess?
 
+  @@unique([organizationId, code])
+  @@unique([organizationId, macAddress])
+  @@index([organizationId, status])
+  @@index([organizationId, modelKey])
   @@map("equipments")
 }
 
-// ============================================================
-// MÓDULO: ASSIGNMENTS (Equipo → Cliente)
-// ============================================================
-
-model Assignment {
-  id             String    @id @default(cuid())
+/// Stock mínimo por modelo (pantalla Existencias).
+model InventoryMinimum {
+  id             String @id @default(cuid())
   organizationId String
+  modelKey       String
+  minimum        Int    @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, modelKey])
+  @@map("inventory_minimums")
+}
+
+/// Usuario e IP de fábrica sugeridos por modelo.
+model DeviceModelDefault {
+  id             String  @id @default(cuid())
+  organizationId String
+  modelKey       String
+  username       String?
+  ip             String?
+  note           String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, modelKey])
+  @@map("device_model_defaults")
+}
+
+/// Acceso de administración del equipo. La contraseña va en VaultSecret
+/// (kind DEVICE_ADMIN, ownerId = equipmentId) y cada revelado se audita.
+model DeviceAccess {
+  equipmentId             String    @id
+  organizationId          String
+  managementIp            String?
+  managementPort          Int?
+  username                String?
+  firmware                String?
+  factoryPasswordChanged  Boolean?
+  passwordChangedAt       DateTime?
+  credentialsNeedRotation Boolean   @default(false)
+  wifiNeedsReset          Boolean   @default(false)
+  updatedAt               DateTime  @updatedAt
+  updatedById             String?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  equipment    Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  wifi         WifiNetwork[]
+
+  @@unique([organizationId, managementIp])
+  @@map("device_accesses")
+}
+
+/// Red WiFi del equipo. La contraseña va en VaultSecret (kind WIFI, ownerId = id).
+model WifiNetwork {
+  id                String       @id @default(cuid())
+  equipmentId       String
+  ssid              String
+  band              WifiBand     @default(DUAL)
+  security          WifiSecurity @default(WPA2)
+  enabled           Boolean      @default(true)
+  passwordChangedAt DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  device DeviceAccess @relation(fields: [equipmentId], references: [equipmentId], onDelete: Cascade)
+
+  @@unique([equipmentId, ssid, band])
+  @@map("wifi_networks")
+}
+
+/// Equipo entregado a un cliente. Regla: un equipo solo puede tener una
+/// asignación ACTIVE (índice parcial en la migración).
+model Assignment {
+  id             String           @id @default(cuid())
+  organizationId String
+  code           String // "ASG-2026-0001"
   clientId       String
   equipmentId    String
-  assignedAt     DateTime  @default(now())
+  status         AssignmentStatus @default(ACTIVE)
+  assignedAt     DateTime         @default(now())
   returnedAt     DateTime?
-  notes          String?
+  description    String?
   customFields   Json?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  createdById    String?
+  updatedById    String?
   deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   client       Client       @relation(fields: [clientId], references: [id])
   equipment    Equipment    @relation(fields: [equipmentId], references: [id])
-  relNotes     Note[]       @relation("AssignmentNotes")
 
+  @@unique([organizationId, code])
+  @@index([organizationId, clientId])
+  @@index([equipmentId, status])
   @@map("assignments")
 }
 
 // ============================================================
-// MÓDULO: CONTRACTS
+// CONTRATOS
 // ============================================================
 
 model Contract {
   id             String         @id @default(cuid())
   organizationId String
-  clientId       String
   contractNumber String
+  clientId       String
   status         ContractStatus @default(PENDING_SIGNATURE)
   startDate      DateTime
   endDate        DateTime?
   signedAt       DateTime?
-  totalMonthly   Decimal        @db.Decimal(10, 2)
-  notes          String?
+  totalMonthly   Decimal        @db.Decimal(12, 2) // suma de partidas
+  description    String?
   customFields   Json?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+  createdById    String?
+  updatedById    String?
   deletedAt      DateTime?
 
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   client       Client         @relation(fields: [clientId], references: [id])
   items        ContractItem[]
-  relNotes     Note[]         @relation("ContractNotes")
+  invoices     Invoice[]
 
+  @@unique([organizationId, contractNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, clientId])
   @@map("contracts")
 }
 
@@ -458,42 +877,63 @@ model ContractItem {
   contractId String
   serviceId  String
   quantity   Int     @default(1)
-  unitPrice  Decimal @db.Decimal(10, 2)
+  unitPrice  Decimal @db.Decimal(12, 2) // precio pactado (puede diferir del catálogo)
+  locked     Boolean @default(false)
 
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   service  Service  @relation(fields: [serviceId], references: [id])
 
+  @@index([serviceId])
   @@map("contract_items")
 }
 
 // ============================================================
-// MÓDULO: INVOICES
+// FACTURACIÓN Y COBRANZA
 // ============================================================
 
 model Invoice {
   id             String        @id @default(cuid())
   organizationId String
+  folio          String // "INV-000123"
   clientId       String
-  folio          String // número de factura
+  contractId     String?
   status         InvoiceStatus @default(PENDING)
   issueDate      DateTime      @default(now())
   dueDate        DateTime
-  subtotal       Decimal       @db.Decimal(10, 2)
-  taxAmount      Decimal       @default(0) @db.Decimal(10, 2)
-  total          Decimal       @db.Decimal(10, 2)
-  notes          String?
+  /// Periodo facturado: evita facturar dos veces el mismo mes de un contrato.
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  subtotal       Decimal       @db.Decimal(12, 2)
+  taxRateId      String?
+  taxName        String? // copia al emitir
+  taxRate        Decimal       @default(0) @db.Decimal(7, 4) // copia al emitir
+  taxAmount      Decimal       @default(0) @db.Decimal(12, 2)
+  total          Decimal       @db.Decimal(12, 2)
+  /// Suma de pagos aplicados; se actualiza en la misma transacción del pago.
+  amountPaid     Decimal       @default(0) @db.Decimal(12, 2)
+  paidAt         DateTime?
+  notifiedAt     DateTime? // "Marcar como notificada"
+  description    String?
   customFields   Json?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+  createdById    String?
+  updatedById    String?
   deletedAt      DateTime?
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client       Client        @relation(fields: [clientId], references: [id])
-  items        InvoiceItem[]
-  payments     Payment[]
-  relNotes     Note[]        @relation("InvoiceNotes")
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client         Client          @relation(fields: [clientId], references: [id])
+  contract       Contract?       @relation(fields: [contractId], references: [id])
+  taxRateRef     TaxRate?        @relation(fields: [taxRateId], references: [id])
+  items          InvoiceItem[]
+  payments       Payment[]
+  onlinePayments OnlinePayment[]
+  cfdi           CfdiStamp?
 
   @@unique([organizationId, folio])
+  @@unique([contractId, periodStart])
+  @@index([organizationId, status, dueDate])
+  @@index([organizationId, clientId])
   @@map("invoices")
 }
 
@@ -503,8 +943,8 @@ model InvoiceItem {
   serviceId   String?
   description String
   quantity    Int     @default(1)
-  unitPrice   Decimal @db.Decimal(10, 2)
-  subtotal    Decimal @db.Decimal(10, 2)
+  unitPrice   Decimal @db.Decimal(12, 2)
+  subtotal    Decimal @db.Decimal(12, 2)
 
   invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   service Service? @relation(fields: [serviceId], references: [id])
@@ -512,116 +952,190 @@ model InvoiceItem {
   @@map("invoice_items")
 }
 
-// ============================================================
-// MÓDULO: PAYMENTS
-// ============================================================
-
 model Payment {
   id             String        @id @default(cuid())
   organizationId String
+  code           String // "PAY-000321"
   clientId       String
   invoiceId      String?
-  amount         Decimal       @db.Decimal(10, 2)
+  amount         Decimal       @db.Decimal(12, 2)
   method         PaymentMethod @default(CASH)
-  reference      String? // número de referencia bancaria
+  source         PaymentSource @default(STAFF)
+  reference      String?
   paidAt         DateTime      @default(now())
   notes          String?
   customFields   Json?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+  createdById    String?
+  updatedById    String?
   deletedAt      DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client       Client       @relation(fields: [clientId], references: [id])
-  invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
-  relNotes     Note[]       @relation("PaymentNotes")
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client        Client         @relation(fields: [clientId], references: [id])
+  invoice       Invoice?       @relation(fields: [invoiceId], references: [id])
+  onlinePayment OnlinePayment?
 
+  @@unique([organizationId, code])
+  @@index([organizationId, paidAt])
+  @@index([organizationId, clientId])
+  @@index([invoiceId])
   @@map("payments")
 }
 
-// ============================================================
-// MÓDULO: EXPENSES
-// ============================================================
+/// Intento de pago en línea desde el portal. Cuando la pasarela confirma
+/// (webhook), el worker crea el Payment y lo liga aquí.
+model OnlinePayment {
+  id                String              @id @default(cuid())
+  organizationId    String
+  clientId          String
+  invoiceId         String
+  provider          PaymentProvider
+  mode              ConnectionMode
+  providerPaymentId String?
+  checkoutUrl       String?
+  amount            Decimal             @db.Decimal(12, 2)
+  currency          String              @default("MXN")
+  status            OnlinePaymentStatus @default(PENDING)
+  rawStatus         String?
+  paymentId         String?             @unique
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client       @relation(fields: [clientId], references: [id])
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id])
+  payment      Payment?     @relation(fields: [paymentId], references: [id])
+
+  @@unique([provider, providerPaymentId])
+  @@index([organizationId, status])
+  @@map("online_payments")
+}
+
+/// Timbrado CFDI 4.0 de una factura.
+model CfdiStamp {
+  id          String       @id @default(cuid())
+  invoiceId   String       @unique
+  provider    CfdiProvider
+  status      CfdiStatus   @default(PENDING)
+  uuid        String?      @unique // folio fiscal
+  xmlUrl      String?
+  pdfUrl      String?
+  error       String?
+  stampedAt   DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("cfdi_stamps")
+}
 
 model Expense {
   id             String          @id @default(cuid())
   organizationId String
+  code           String // "EXP-000017"
   description    String
+  vendor         String?
   category       ExpenseCategory @default(OTHER)
-  amount         Decimal         @db.Decimal(10, 2)
+  amount         Decimal         @db.Decimal(12, 2)
   date           DateTime
-  vendor         String? // proveedor del gasto
-  receiptUrl     String? // URL del comprobante
+  receiptUrl     String?
   customFields   Json?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+  createdById    String?
+  updatedById    String?
   deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  relNotes     Note[]       @relation("ExpenseNotes")
 
+  @@unique([organizationId, code])
+  @@index([organizationId, date])
   @@map("expenses")
 }
 
 // ============================================================
-// MÓDULO: CALENDAR EVENTS
+// CALENDARIO
 // ============================================================
 
 model CalendarEvent {
-  id             String      @id @default(cuid())
+  id             String            @id @default(cuid())
   organizationId String
-  subject        String
+  title          String
   description    String?
-  startDate      DateTime
-  endDate        DateTime
-  allDay         Boolean     @default(false)
-  status         EventStatus @default(PENDING)
+  type           CalendarEventType @default(FOLLOW_UP)
+  status         EventStatus       @default(SCHEDULED)
+  startsAt       DateTime
+  endsAt         DateTime
+  allDay         Boolean           @default(false)
+  address        String?
   clientId       String?
   leadId         String?
+  ticketId       String?
+  assignedToId   String? // técnico o vendedor (antes se guardaba el nombre)
   createdById    String
-  assignedToId   String?
-  customFields   Json?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  completedAt    DateTime?
+  reminderSentAt DateTime? // lo marca el worker al mandar el recordatorio
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
   deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   client       Client?      @relation(fields: [clientId], references: [id])
   lead         Lead?        @relation(fields: [leadId], references: [id])
-  createdBy    User         @relation("EventCreatedBy", fields: [createdById], references: [id])
+  ticket       Ticket?      @relation(fields: [ticketId], references: [id])
   assignedTo   User?        @relation("EventAssignedTo", fields: [assignedToId], references: [id])
+  createdBy    User         @relation("EventCreatedBy", fields: [createdById], references: [id])
 
+  @@index([organizationId, startsAt])
+  @@index([organizationId, assignedToId, startsAt])
   @@map("calendar_events")
 }
 
 // ============================================================
-// MÓDULO: TICKETS / SOPORTE
+// TICKETS
 // ============================================================
 
 model Ticket {
-  id             String         @id @default(cuid())
-  organizationId String
-  clientId       String
-  subject        String
-  description    String
-  status         TicketStatus   @default(OPEN)
-  priority       TicketPriority @default(MEDIUM)
-  assignedToId   String?
-  createdById    String
-  resolvedAt     DateTime?
-  customFields   Json?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  deletedAt      DateTime?
+  id              String         @id @default(cuid())
+  organizationId  String
+  folio           String? // "TK-000088"
+  clientId        String
+  subject         String
+  description     String
+  category        TicketCategory @default(OTHER)
+  priority        TicketPriority @default(MEDIUM)
+  status          TicketStatus   @default(OPEN)
+  channel         TicketChannel  @default(PHONE)
+  faultType       String? // del portal: sin-internet, lento, intermitente, equipo, factura, otro
+  requester       String? // quien reportó (puede no ser el titular)
+  assignedToId    String?
+  /// null cuando lo abrió el cliente desde el portal.
+  createdById     String?
+  slaDueAt        DateTime?
+  firstResponseAt DateTime?
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+  customFields    Json?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   client       Client          @relation(fields: [clientId], references: [id])
   assignedTo   User?           @relation("TicketAssignedTo", fields: [assignedToId], references: [id])
-  createdBy    User            @relation("TicketCreatedBy", fields: [createdById], references: [id])
+  createdBy    User?           @relation("TicketCreatedBy", fields: [createdById], references: [id])
   comments     TicketComment[]
   attachments  Attachment[]    @relation("TicketAttachments")
-  relNotes     Note[]          @relation("TicketNotes")
+  events       CalendarEvent[]
 
+  @@unique([organizationId, folio])
+  @@index([organizationId, status, priority])
+  @@index([organizationId, clientId])
+  @@index([organizationId, assignedToId])
+  @@index([slaDueAt])
   @@map("tickets")
 }
 
@@ -629,373 +1143,572 @@ model TicketComment {
   id         String    @id @default(cuid())
   ticketId   String
   message    String
-  authorId   String
-  isInternal Boolean   @default(false) // comentario interno vs visible al cliente
+  /// Autor del equipo; null si respondió el cliente desde el portal.
+  authorId   String?
+  fromClient Boolean   @default(false)
+  isInternal Boolean   @default(false) // interno = no se ve en el portal
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
 
   ticket      Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  author      User         @relation("TicketCommentAuthor", fields: [authorId], references: [id])
+  author      User?        @relation("TicketCommentAuthor", fields: [authorId], references: [id])
   attachments Attachment[] @relation("TicketCommentAttachments")
 
+  @@index([ticketId, createdAt])
   @@map("ticket_comments")
 }
 
 // ============================================================
-// RELATED LIST: NOTES (aplica a todos los módulos excepto Calendar)
+// LISTAS RELACIONADAS GENÉRICAS (cualquier módulo, incluidos cm_*)
+// module = clave del módulo ("clients", "invoices", "cm_ordenes"…)
+// recordId = id del registro. La integridad la valida el servicio.
 // ============================================================
 
 model Note {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   organizationId String
-  title          String
+  module         String
+  recordId       String
+  title          String?
   message        String
-  module         String // nombre del módulo al que pertenece
+  pinned         Boolean   @default(false)
   createdById    String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  // Relaciones opcionales al módulo padre
-  clientId     String?
-  leadId       String?
-  serviceId    String?
-  equipmentId  String?
-  assignmentId String?
-  invoiceId    String?
-  paymentId    String?
-  expenseId    String?
-  ticketId     String?
-  contractId   String?
-  attachments  Attachment[] @relation("NoteAttachments")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy    User         @relation(fields: [createdById], references: [id])
-  client       Client?      @relation("ClientNotes", fields: [clientId], references: [id])
-  lead         Lead?        @relation("LeadNotes", fields: [leadId], references: [id])
-  service      Service?     @relation("ServiceNotes", fields: [serviceId], references: [id])
-  equipment    Equipment?   @relation("EquipmentNotes", fields: [equipmentId], references: [id])
-  assignment   Assignment?  @relation("AssignmentNotes", fields: [assignmentId], references: [id])
-  invoice      Invoice?     @relation("InvoiceNotes", fields: [invoiceId], references: [id])
-  payment      Payment?     @relation("PaymentNotes", fields: [paymentId], references: [id])
-  expense      Expense?     @relation("ExpenseNotes", fields: [expenseId], references: [id])
-  ticket       Ticket?      @relation("TicketNotes", fields: [ticketId], references: [id])
-  contract     Contract?    @relation("ContractNotes", fields: [contractId], references: [id])
+  attachments  Attachment[] @relation("NoteAttachments")
 
+  @@index([organizationId, module, recordId])
   @@map("notes")
 }
 
-// ============================================================
-// ADJUNTOS GENÉRICOS (notas, tickets y comentarios)
-// ============================================================
-
+/// Archivo en almacenamiento de objetos (S3 / R2 / MinIO). storageKey es la
+/// ruta en el bucket; la descarga se sirve con URL firmada y temporal.
 model Attachment {
-  id              String    @id @default(cuid())
-  organizationId  String
-  fileName        String
-  mimeType        String
-  size            Int
-  url             String
-  uploadedById    String
-  noteId          String?
-  ticketId        String?
-  ticketCommentId String?
-  createdAt       DateTime  @default(now())
-  deletedAt       DateTime?
+  id               String    @id @default(cuid())
+  organizationId   String
+  module           String
+  recordId         String
+  noteId           String?
+  ticketId         String?
+  ticketCommentId  String?
+  fileName         String
+  mimeType         String
+  size             Int
+  storageKey       String
+  visibleToClient  Boolean   @default(false) // aparece en el portal
+  uploadedById     String?
+  uploadedByClient Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  deletedAt        DateTime?
 
   organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  uploadedBy    User           @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id])
+  uploadedBy    User?          @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id])
   note          Note?          @relation("NoteAttachments", fields: [noteId], references: [id], onDelete: Cascade)
   ticket        Ticket?        @relation("TicketAttachments", fields: [ticketId], references: [id], onDelete: Cascade)
   ticketComment TicketComment? @relation("TicketCommentAttachments", fields: [ticketCommentId], references: [id], onDelete: Cascade)
 
-  @@index([organizationId])
+  @@index([organizationId, module, recordId])
   @@index([noteId])
   @@index([ticketId])
   @@index([ticketCommentId])
   @@map("attachments")
 }
 
-// ============================================================
-// RELATED LIST: EMAIL LOGS (Clients + Leads)
-// ============================================================
-
-model EmailLog {
-  id             String   @id @default(cuid())
-  organizationId String
-  subject        String
-  from           String
-  to             String
-  messageHtml    String?
-  messageTxt     String?
-  sentAt         DateTime @default(now())
-  sentById       String?
-  clientId       String?
-  leadId         String?
+/// Correos del CRM: borradores editables y enviados. El envío real lo hace el
+/// worker (cola "email"); el registro de entrega queda en Mongo (message_logs).
+model EmailMessage {
+  id                String      @id @default(cuid())
+  organizationId    String
+  module            String
+  recordId          String
+  templateId        String?
+  to                String[]
+  cc                String[]
+  fromAddress       String?
+  subject           String
+  body              String
+  status            EmailStatus @default(DRAFT)
+  attachmentIds     String[]
+  sentById          String?
+  sentAt            DateTime?
+  providerMessageId String?
+  error             String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sentBy       User?        @relation(fields: [sentById], references: [id])
-  client       Client?      @relation(fields: [clientId], references: [id])
-  lead         Lead?        @relation(fields: [leadId], references: [id])
+  template     Template?    @relation(fields: [templateId], references: [id])
 
-  @@map("email_logs")
+  @@index([organizationId, module, recordId])
+  @@index([organizationId, status])
+  @@map("email_messages")
 }
 
 // ============================================================
-// CONFIGURACIÓN: SMTP
+// PLANTILLAS (correo, SMS, WhatsApp)
 // ============================================================
 
+model Template {
+  id             String          @id @default(cuid())
+  organizationId String
+  name           String
+  channel        TemplateChannel
+  /// Módulo donde se ofrece; null = todos.
+  module         String?
+  format         TemplateFormat  @default(TEXT)
+  subject        String? // solo correo
+  body           String // con ${tokens}
+  status         TemplateStatus  @default(ACTIVE)
+  attachDocument Boolean         @default(false) // WhatsApp: agrega el enlace del documento
+  showWhen       String[] // WhatsApp: estados del registro donde aparece
+  /// Plantillas del sistema ("tpl-contract-send"…): no se eliminan. Si se
+  /// borra una sembrada se marca deletedAt para no volver a sembrarla.
+  systemKey      String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  updatedById    String?
+  deletedAt      DateTime?
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  emailMessages EmailMessage[]
+
+  @@unique([organizationId, name])
+  @@unique([organizationId, systemKey])
+  @@index([organizationId, channel, module])
+  @@map("templates")
+}
+
+// ============================================================
+// MÓDULOS PERSONALIZADOS
+// ============================================================
+
+model CustomModule {
+  id             String    @id @default(cuid())
+  organizationId String
+  key            String // "cm_ordenes_de_trabajo"
+  singular       String
+  plural         String
+  gender         Gender    @default(M)
+  description    String?
+  icon           String?
+  accent         String    @default("#2563eb")
+  primaryLabel   String    @default("Nombre")
+  idPrefix       String // 2–5 letras: "OT"
+  showInMenu     Boolean   @default(true)
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fields       CustomField[]
+  records      CustomRecord[]
+
+  @@unique([organizationId, key])
+  @@unique([organizationId, idPrefix])
+  @@map("custom_modules")
+}
+
+/// Campo personalizado. Sirve para módulos nativos (moduleKey = "clients",
+/// "tickets"…) y para los cm_* (customModuleId lleno). El valor se guarda en
+/// la columna customFields (JSONB) del registro.
+model CustomField {
+  id             String          @id @default(cuid())
+  organizationId String
+  moduleKey      String
+  customModuleId String?
+  key            String // "cf_numero_de_poste": inmutable
+  label          String
+  type           CustomFieldType // inmutable
+  required       Boolean         @default(false)
+  helpText       String?
+  options        String[] // PICKLIST
+  lookupModule   String? // LOOKUP
+  showInList     Boolean         @default(false)
+  order          Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customModule CustomModule? @relation(fields: [customModuleId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, moduleKey, key])
+  @@unique([organizationId, moduleKey, label])
+  @@map("custom_fields")
+}
+
+/// Ajustes de módulos nativos (ocultarlos del menú).
+model NativeModuleSetting {
+  id             String  @id @default(cuid())
+  organizationId String
+  moduleKey      String
+  hiddenInMenu   Boolean @default(false)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, moduleKey])
+  @@map("native_module_settings")
+}
+
+/// Registro de un módulo personalizado. data = { cf_*: valor } (JSONB con
+/// índice GIN en la migración para filtrar por campo).
+model CustomRecord {
+  id             String    @id @default(cuid())
+  organizationId String
+  moduleId       String
+  code           String // "OT-000001"
+  name           String
+  data           Json      @default("{}")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdById    String?
+  updatedById    String?
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  module       CustomModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, code])
+  @@index([moduleId, createdAt])
+  @@map("custom_records")
+}
+
+// ============================================================
+// CANALES Y CONEXIONES
+// ============================================================
+
+/// La contraseña va en VaultSecret (kind SMTP).
 model SmtpConfig {
-  id             String   @id @default(cuid())
-  organizationId String   @unique
-  host           String
-  port           Int      @default(587)
-  secure         Boolean  @default(false)
-  username       String
-  password       String // encrypted
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  enabled        Boolean      @default(false)
+  host           String?
+  port           Int          @default(587)
+  security       SmtpSecurity @default(STARTTLS)
+  username       String?
   fromName       String?
-  fromEmail      String
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  fromEmail      String?
+  replyTo        String?
+  secretTail     String?
+  updatedAt      DateTime     @updatedAt
+  updatedById    String?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("smtp_configs")
 }
 
-// ============================================================
-// CONFIGURACIÓN: SMS
-// ============================================================
-
+/// El token va en VaultSecret (kind SMS).
 model SmsConfig {
-  id             String   @id @default(cuid())
-  organizationId String   @unique
-  provider       String // "twilio", "nexmo", etc.
-  apiKey         String
-  apiSecret      String
-  fromNumber     String
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id             String        @id @default(cuid())
+  organizationId String        @unique
+  enabled        Boolean       @default(false)
+  provider       SmsProvider   @default(TWILIO)
+  accountId      String?
+  senderType     SmsSenderType @default(NUMBER)
+  sender         String?
+  quietHours     Boolean       @default(true)
+  quietStart     String        @default("21:00") // HH:MM, puede cruzar medianoche
+  quietEnd       String        @default("08:00")
+  secretTail     String?
+  updatedAt      DateTime      @updatedAt
+  updatedById    String?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("sms_configs")
 }
 
-// ============================================================
-// TEMPLATES: EMAIL Y SMS
-// ============================================================
-
-model EmailTemplate {
-  id             String   @id @default(cuid())
-  organizationId String
-  name           String
-  subject        String
-  bodyHtml       String
-  bodyTxt        String?
-  variables      String[] // lista de variables disponibles como {{client_name}}
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+/// Mapas y WhatsApp (manual por wa.me).
+model ConnectionSettings {
+  id                  String   @id @default(cuid())
+  organizationId      String   @unique
+  mapsApiKey          String? // llave de navegador (restringida por dominio)
+  whatsappCountryCode String   @default("52")
+  updatedAt           DateTime @updatedAt
+  updatedById         String?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  @@map("email_templates")
+  @@map("connection_settings")
 }
 
-model SmsTemplate {
-  id             String   @id @default(cuid())
-  organizationId String
-  name           String
-  body           String
-  variables      String[]
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+/// Pasarela de pago del portal. La llave secreta va en VaultSecret (PAYMENTS).
+model PaymentGatewayConfig {
+  id             String          @id @default(cuid())
+  organizationId String          @unique
+  enabled        Boolean         @default(false)
+  provider       PaymentProvider @default(CONEKTA)
+  mode           ConnectionMode  @default(SANDBOX)
+  publicKey      String?
+  secretTail     String?
+  secretSetAt    DateTime?
+  updatedAt      DateTime        @updatedAt
+  updatedById    String?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  @@map("sms_templates")
+  @@map("payment_gateway_configs")
 }
 
-// ============================================================
-// PORTALES DE CLIENTE
-// ============================================================
-
-model ClientPortal {
-  id             String   @id @default(cuid())
-  organizationId String
-  name           String
-  slug           String // URL amigable: /portal/mi-isp
-  isActive       Boolean  @default(true)
-  showInvoices   Boolean  @default(true)
-  showPayments   Boolean  @default(true)
-  showTickets    Boolean  @default(false)
-  logoUrl        String?
-  primaryColor   String?  @default("#3B82F6")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@unique([organizationId, slug])
-  @@map("client_portals")
-}
-
-// ============================================================
-// MÓDULOS CUSTOM
-// ============================================================
-
-model CustomModule {
-  id             String     @id @default(cuid())
-  organizationId String
-  name           String
-  slug           String // identificador único dentro de la org
-  description    String?
-  type           ModuleType @default(CUSTOM)
-  icon           String?
-  isActive       Boolean    @default(true)
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  deletedAt      DateTime?
-
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  fields       CustomField[]
-
-  @@unique([organizationId, slug])
-  @@map("custom_modules")
-}
-
-model CustomField {
-  id           String    @id @default(cuid())
-  moduleId     String
-  name         String
-  slug         String // api_name del campo
-  type         FieldType @default(TEXT)
-  isRequired   Boolean   @default(false)
-  defaultValue String?
-  options      String[] // para SELECT / MULTISELECT
-  order        Int       @default(0)
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  module CustomModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-
-  @@unique([moduleId, slug])
-  @@map("custom_fields")
-}
-
-// ============================================================
-// WORKFLOWS (estructura base — pendiente definir triggers)
-// ============================================================
-
-model Workflow {
-  id             String   @id @default(cuid())
-  organizationId String
-  name           String
-  description    String?
-  triggerModule  String // módulo que dispara el workflow
-  triggerEvent   String // "on_create", "on_update", "on_status_change"
-  conditions     Json? // condiciones para ejecutar
-  actions        Json // acciones a ejecutar (send_email, update_field, etc.)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@map("workflows")
-}
-
-// ============================================================
-// SCHEDULES (tareas programadas)
-// ============================================================
-
-model Schedule {
+/// PAC para timbrar. La contraseña va en VaultSecret (CFDI).
+model CfdiConfig {
   id             String         @id @default(cuid())
+  organizationId String         @unique
+  enabled        Boolean        @default(false)
+  provider       CfdiProvider   @default(FACTURAMA)
+  mode           ConnectionMode @default(SANDBOX)
+  username       String?
+  secretTail     String?
+  secretSetAt    DateTime?
+  updatedAt      DateTime       @updatedAt
+  updatedById    String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("cfdi_configs")
+}
+
+/// API de terceros (ERP, contabilidad…). La llave va en VaultSecret.
+model CustomConnection {
+  id             String       @id @default(cuid())
   organizationId String
   name           String
-  description    String?
-  type           ScheduleType   @default(RECURRING)
-  status         ScheduleStatus @default(ACTIVE)
-  cronExpression String? // para RECURRING: "0 9 1 * *" (día 1 de cada mes)
-  runAt          DateTime? // para ONE_TIME
-  action         String // "generate_invoices", "send_reminder", etc.
-  payload        Json? // parámetros de la acción
-  lastRunAt      DateTime?
-  nextRunAt      DateTime?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  baseUrl        String
+  authType       HttpAuthType @default(NONE)
+  authName       String? // header de API key o usuario de Basic
+  headers        Json         @default("[]") // [{ name, value }]
+  secretTail     String?
+  enabled        Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  updatedById    String?
 
-  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  executions   ScheduleExecution[]
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  webhooks     Webhook[]
 
-  @@map("schedules")
+  @@unique([organizationId, name])
+  @@map("custom_connections")
 }
 
-model ScheduleExecution {
-  id         String    @id @default(cuid())
-  scheduleId String
-  startedAt  DateTime  @default(now())
-  finishedAt DateTime?
-  success    Boolean   @default(false)
-  output     Json?
-  error      String?
-
-  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-
-  @@map("schedule_executions")
-}
-
-// ============================================================
-// WEBHOOKS
-// ============================================================
-
+/// Aviso saliente. Las entregas (y reintentos) quedan en Mongo
+/// (webhook_deliveries). Firma HMAC con VaultSecret (WEBHOOK_SIGNING).
 model Webhook {
-  id             String         @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   name           String
-  url            String
-  secret         String? // para firma HMAC
-  events         WebhookEvent[]
-  isActive       Boolean        @default(true)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  event          WebhookEvent
+  connectionId   String?
+  target         String // ruta si hay conexión, URL completa si no
+  enabled        Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  updatedById    String?
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  deliveries   WebhookDelivery[]
+  connection   CustomConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
 
+  @@index([organizationId, event, enabled])
   @@map("webhooks")
 }
 
-model WebhookDelivery {
-  id          String       @id @default(cuid())
-  webhookId   String
-  event       WebhookEvent
-  payload     Json
-  statusCode  Int?
-  response    String?
-  success     Boolean      @default(false)
-  attemptedAt DateTime     @default(now())
+// ============================================================
+// RED · MIKROTIK
+// ============================================================
 
-  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+/// La contraseña del usuario API va en VaultSecret (ROUTER).
+model Router {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String
+  node           String? // torre / sitio
+  host           String
+  port           Int       @default(443)
+  api            RouterApi @default(REST)
+  username       String
+  secretTail     String?
+  enabled        Boolean   @default(true)
+  simulated      Boolean   @default(false) // router de demostración
+  blockList      String    @default("morosos") // address-list de cortes
+  identity       String?
+  version        String?
+  lastCheckAt    DateTime?
+  lastCheckOk    Boolean?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  updatedById    String?
 
-  @@map("webhook_deliveries")
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscribers  NetworkSubscriber[]
+
+  @@unique([organizationId, host])
+  @@map("routers")
+}
+
+/// Perfil de velocidad. Si serviceId está lleno, se sincroniza con el
+/// servicio de Internet (crear/editar/eliminar el servicio lo actualiza).
+model SpeedProfile {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  downloadMbps   Decimal  @db.Decimal(8, 2)
+  uploadMbps     Decimal  @db.Decimal(8, 2)
+  burst          Boolean  @default(false)
+  serviceId      String?  @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  service      Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, name])
+  @@map("speed_profiles")
+}
+
+/// Cola simple (/queue simple) de un cliente. Velocidad null = la del plan.
+model NetworkSubscriber {
+  id               String            @id @default(cuid())
+  organizationId   String
+  clientId         String            @unique
+  routerId         String
+  queueName        String
+  ip               String
+  downloadOverride Decimal?          @db.Decimal(8, 2)
+  uploadOverride   Decimal?          @db.Decimal(8, 2)
+  burst            Boolean           @default(false)
+  blocked          Boolean           @default(false)
+  blockedAt        DateTime?
+  blockReason      BlockReason?
+  blockNote        String?
+  countersResetAt  DateTime?
+  syncStatus       NetworkSyncStatus @default(PENDING)
+  lastSyncAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  updatedById      String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  router       Router       @relation(fields: [routerId], references: [id])
+
+  @@unique([routerId, queueName])
+  @@unique([organizationId, ip])
+  @@index([organizationId, blocked])
+  @@map("network_subscribers")
+}
+
+/// Reglas de corte automático (las ejecuta el worker).
+model CutoffRules {
+  id                  String   @id @default(cuid())
+  organizationId      String   @unique
+  enabled             Boolean  @default(false)
+  graceDays           Int      @default(5) // 0–60
+  windowStart         String   @default("09:00") // HH:MM
+  windowEnd           String   @default("18:00")
+  skipWeekends        Boolean  @default(true)
+  reactivateOnPayment Boolean  @default(true)
+  notifyWhatsapp      Boolean  @default(true)
+  updatedAt           DateTime @updatedAt
+  updatedById         String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("cutoff_rules")
 }
 
 // ============================================================
-// SEGURIDAD: IP RESTRICTIONS
+// PORTAL DE CLIENTES
+// ============================================================
+
+model PortalConfig {
+  id                  String   @id @default(cuid())
+  organizationId      String   @unique
+  name                String
+  slug                String   @unique // global: es la URL pública
+  previousSlugs       String[] // redirigen al actual (máx. 5)
+  enabled             Boolean  @default(false)
+  showInvoices        Boolean  @default(true)
+  showPayments        Boolean  @default(true)
+  showTickets         Boolean  @default(true)
+  showAttachments     Boolean  @default(false)
+  showWifi            Boolean  @default(false)
+  allowProfileEdit    Boolean  @default(false)
+  allowTicketCreation Boolean  @default(true)
+  allowFileUpload     Boolean  @default(false)
+  allowOnlinePayment  Boolean  @default(false)
+  primaryColor        String   @default("#2563EB")
+  supportEmail        String?
+  updatedAt           DateTime @updatedAt
+  updatedById         String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("portal_configs")
+}
+
+/// Acceso del cliente al portal: número de cliente + PIN (hash, nunca en claro).
+model PortalAccess {
+  id             String             @id @default(cuid())
+  organizationId String
+  clientId       String             @unique
+  pinHash        String
+  status         PortalAccessStatus @default(ACTIVE)
+  failedAttempts Int                @default(0)
+  lockedUntil    DateTime?
+  invitedAt      DateTime?
+  lastLoginAt    DateTime?
+  updatedAt      DateTime           @updatedAt
+  updatedById    String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("portal_accesses")
+}
+
+// ============================================================
+// BÓVEDA DE SECRETOS
+// AES-256-GCM con llave maestra fuera de la base (KMS o variable
+// VAULT_MASTER_KEY). keyVersion permite rotar la llave maestra.
+// Cada revelado (credenciales de equipo, WiFi) se audita en Mongo.
+// ============================================================
+
+model VaultSecret {
+  id             String     @id @default(cuid())
+  organizationId String
+  kind           SecretKind
+  ownerId        String // id del equipo, red WiFi, router, conexión, webhook u organización
+  ciphertext     String
+  iv             String
+  authTag        String
+  keyVersion     Int        @default(1)
+  tail           String? // últimos 4 para mostrar
+  createdAt      DateTime   @default(now())
+  rotatedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, kind, ownerId])
+  @@map("vault_secrets")
+}
+
+// ============================================================
+// SEGURIDAD Y AUTOMATIZACIÓN
 // ============================================================
 
 model IpRestriction {
   id             String   @id @default(cuid())
   organizationId String
-  ipAddress      String // puede ser IP exacta o CIDR: "192.168.1.0/24"
+  cidr           String // "192.168.1.0/24" o IP exacta
   description    String?
-  isAllowed      Boolean  @default(true) // true=whitelist, false=blacklist
+  isAllowed      Boolean  @default(true)
   createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -1003,80 +1716,75 @@ model IpRestriction {
   @@map("ip_restrictions")
 }
 
-// ============================================================
-// AUDIT TRAIL Y ACTIVITY LOGS
-// ============================================================
-
-model ActivityLog {
-  id             String   @id @default(cuid())
-  organizationId String
-  userId         String
-  action         String // "LOGIN", "VIEWED", "SEARCHED"
-  module         String?
-  recordId       String?
-  ip             String?
-  userAgent      String?
-  createdAt      DateTime @default(now())
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id])
-
-  @@map("activity_logs")
-}
-
-model AuditTrail {
-  id             String   @id @default(cuid())
-  organizationId String
-  userId         String
-  module         String
-  recordId       String
-  action         String // "CREATE", "UPDATE", "DELETE"
-  before         Json? // estado anterior del registro
-  after          Json? // estado nuevo del registro
-  ip             String?
-  createdAt      DateTime @default(now())
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id])
-
-  @@map("audit_trails")
-}
-
-// ============================================================
-// CONFIGURACIÓN FISCAL
-// ============================================================
-
-model TaxConfig {
-  id             String   @id @default(cuid())
-  organizationId String
-  name           String // "IVA 16%", "IVA 0%"
-  rate           Decimal  @db.Decimal(5, 4) // 0.1600 para 16%
-  isDefault      Boolean  @default(false)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@map("tax_configs")
-}
-
-// ============================================================
-// CONEXIONES A APPS TERCERAS (MikroTik, etc.)
-// ============================================================
-
-model ThirdPartyConnection {
+/// Regla "cuando pase X y se cumpla Y, haz Z" (factura vencida → correo,
+/// ticket urgente → avisar supervisor…). La evalúa el worker.
+model Automation {
   id             String    @id @default(cuid())
   organizationId String
   name           String
-  provider       String // "mikrotik", "unifi", "splynx", etc.
-  config         Json // host, user, password, port — encrypted
-  isActive       Boolean   @default(true)
-  lastSyncAt     DateTime?
+  description    String?
+  triggerModule  String
+  triggerEvent   String // "created", "updated", "status_changed", "overdue"…
+  conditions     Json      @default("[]")
+  actions        Json // [{ type: "send_template", templateId }, { type: "assign", userId }…]
+  enabled        Boolean   @default(true)
+  runCount       Int       @default(0)
+  lastRunAt      DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  @@map("third_party_connections")
+  @@index([organizationId, triggerModule, enabled])
+  @@map("automations")
+}
+
+/// Tareas programadas por organización (facturación del mes, recordatorios,
+/// cortes, cierre diario). El worker las registra como repeatable jobs de
+/// BullMQ; cada ejecución queda en Mongo (job_runs).
+model Schedule {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  job            String // "billing.generate", "invoices.remind", "network.cutoff"…
+  cron           String // "0 9 1 * *"
+  timeZone       String         @default("America/Mexico_City")
+  payload        Json?
+  status         ScheduleStatus @default(ACTIVE)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, job])
+  @@map("schedules")
+}
+
+// ============================================================
+// OUTBOX DE EVENTOS
+// Se escribe en la MISMA transacción que el cambio de negocio (pago, factura,
+// bloqueo…). Un relay del worker lo lee y reparte a las colas: webhooks,
+// actividad, notificaciones, automatizaciones. Así ningún evento se pierde
+// aunque la API se caiga justo después de guardar.
+// ============================================================
+
+model OutboxEvent {
+  id             String    @id @default(cuid())
+  organizationId String
+  /// "payment.created", "invoice.paid", "network.blocked"…
+  type           String
+  module         String?
+  recordId       String?
+  payload        Json
+  actorId        String?
+  createdAt      DateTime  @default(now())
+  processedAt    DateTime?
+  attempts       Int       @default(0)
+  error          String?
+
+  @@index([processedAt, createdAt])
+  @@index([organizationId, type, createdAt])
+  @@map("outbox_events")
 }
